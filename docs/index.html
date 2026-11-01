@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>Ответы на ваши вопросы таро</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="config.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Cormorant+Garamond:ital,wght@0,500;0,600;0,700;1,600&display=swap" rel="stylesheet">
 <style>
@@ -373,7 +374,7 @@ function cardMeta(name) {
 }
 
 async function api(path, body) {
-  const r = await fetch(path, {method: 'POST',
+  const r = await fetch((window.API_BASE || '') + path, {method: 'POST',
     headers: {'Content-Type': 'application/json', 'X-Init-Data': tg.initData}, body: JSON.stringify(body)});
   const data = await r.json().catch(() => ({}));
   if (!r.ok) throw new Error(data.error || 'Ошибка связи, попробуйте ещё раз');
@@ -600,7 +601,7 @@ pickTopic(topic, true);
 })();
 
 /* расклады */
-fetch('/api/spreads').then(r => r.json()).then(list => {
+fetch((window.API_BASE || '') + '/api/spreads').then(r => r.json()).then(list => {
   spreadList = list;
   if (!list.some(s => s.id === spread)) spread = (list[1] || list[0]).id;
   list.forEach(s => {

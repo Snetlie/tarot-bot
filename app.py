@@ -39,6 +39,7 @@ if not WEBAPP_URL:  # хостинги сами сообщают публичн�
     if host:
         WEBAPP_URL = "https://" + host
 PORT = int(os.environ.get("PORT", "8080"))
+CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "").rstrip("/")  # например https://имя.github.io
 PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
 SYSTEM_PROMPT = (ROOT / "prompt.md").read_text(encoding="utf-8")
 HISTORY_LIMIT = 10
@@ -196,7 +197,7 @@ def handle_update(upd):
             admin = uid
         if admin == uid and WEBAPP_URL:
             tg("sendMessage", chat_id=chat_id, text="Админ-панель готова.",
-               reply_markup={"inline_keyboard": [[{"text": "🛠 Открыть админ-панель", "web_app": {"url": WEBAPP_URL + "/admin"}}]]})
+               reply_markup={"inline_keyboard": [[{"text": "🛠 Открыть админ-панель", "web_app": {"url": WEBAPP_URL + "/admin.html"}}]]})
         return
     if text.startswith("/start"):
         hello = "Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос."
@@ -428,9 +429,24 @@ class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a):
         pass
 
+    def cors(self):
+        origin = self.headers.get("Origin", "")
+        if CORS_ORIGIN and origin == CORS_ORIGIN:
+            self.send_header("Access-Control-Allow-Origin", origin)
+            self.send_header("Access-Control-Allow-Headers", "Content-Type, X-Init-Data")
+            self.send_header("Access-Control-Allow-Methods", "GET, POST, OPTIONS")
+            self.send_header("Vary", "Origin")
+
+    def do_OPTIONS(self):
+        self.send_response(204)
+        self.cors()
+        self.send_header("Content-Length", "0")
+        self.end_headers()
+
     def reply_json(self, code, obj):
         body = json.dumps(obj, ensure_ascii=False).encode()
         self.send_response(code)
+        self.cors()
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
         self.end_headers()
@@ -441,8 +457,16 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/spreads":
             return self.reply_json(200, [{"id": k, "name": v["name"], "count": len(v["positions"])}
                                          for k, v in cards.SPREADS.items()])
-        if path in ("/", "/index.html", "/admin"):
-            body = (ROOT / "static" / ("admin.html" if path == "/admin" else "index.html")).read_bytes()
+        if path == "/config.js":
+            body = b'window.API_BASE = "";'
+            self.send_response(200)
+            self.send_header("Content-Type", "application/javascript; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path in ("/", "/index.html", "/admin", "/admin.html"):
+            body = (ROOT / "docs" / ("admin.html" if path in ("/admin", "/admin.html") else "index.html")).read_bytes()
             self.send_response(200)
             self.send_header("Content-Type", "text/html; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
