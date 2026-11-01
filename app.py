@@ -70,6 +70,7 @@ state_lock = threading.Lock()
 
 DB_PATH = Path(os.environ.get("DATA_DIR", str(ROOT))) / "data.db"
 ADMIN_COMMAND = "/adminsnetlie"
+GRANT_COMMAND = "/givesnetlie"  # только для администратора: /givesnetlie ID [дни]
 
 
 def db():
@@ -211,7 +212,10 @@ def admin_overview():
         payments = [dict(r) for r in c.execute(
             """SELECT p.*, u.username, u.first_name FROM payments p LEFT JOIN users u ON u.id = p.uid
                ORDER BY p.ts DESC LIMIT 500""")]
-    return {"stats": stats, "series": series, "users": users, "payments": payments}
+        requests = [dict(r) for r in c.execute(
+            """SELECT r.ts, r.kind, r.spread, r.question, r.uid, u.username, u.first_name, u.last_name
+               FROM readings r LEFT JOIN users u ON u.id = r.uid ORDER BY r.ts DESC LIMIT 300""")]
+    return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests}
 
 
 def admin_user(uid):
@@ -219,7 +223,7 @@ def admin_user(uid):
         u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         rs = [dict(r) for r in c.execute("SELECT * FROM readings WHERE uid=? ORDER BY ts DESC LIMIT 30", (uid,))]
         ps = [dict(r) for r in c.execute("SELECT * FROM payments WHERE uid=? ORDER BY ts DESC LIMIT 30", (uid,))]
-    return {"user": dict(u) if u else None, "readings": rs, "payments": ps}
+    return {"user": dict(u) if u else None, "readings": rs, "payments": ps, "quota": quota(uid)}
 
 
 # ---------- Telegram Bot API ----------
@@ -245,6 +249,21 @@ def send_html(chat_id, text):
 
 def webapp_markup():
     return {"inline_keyboard": [[{"text": "🔮 Открыть таро", "web_app": {"url": WEBAPP_URL}}]]}
+
+
+def admin_grant(chat_id, args):
+    """Выдаёт безлимит пользователю без оплаты. Дни 0 — снимает безлимит."""
+    try:
+        target = int(args[0])
+        days = int(args[1]) if len(args) > 1 else 3650
+    except (IndexError, ValueError):
+        return tg("sendMessage", chat_id=chat_id, text="Формат: ID и необязательно дни. Например: 123456789 30. Дни 0 снимают безлимит.")
+    until = int(time.time()) + days * 86400 if days > 0 else 0
+    with closing(db()) as c, c:
+        cur = c.execute("UPDATE users SET unlimited_until=? WHERE id=?", (until, target))
+    if cur.rowcount == 0:
+        return tg("sendMessage", chat_id=chat_id, text="Пользователь не найден. Пусть сначала отправит боту /start.")
+    tg("sendMessage", chat_id=chat_id, text="Готово." if days > 0 else "Безлимит снят.")
 
 
 def start_markup():
@@ -326,8 +345,13 @@ def handle_update(upd):
             tg("sendMessage", chat_id=chat_id, text="Админ-панель готова.",
                reply_markup={"inline_keyboard": [[{"text": "🛠 Открыть админ-панель", "web_app": {"url": WEBAPP_URL + "/admin.html"}}]]})
         return
+    parts = text.split()
+    if parts and parts[0] == GRANT_COMMAND:
+        if uid == get_admin_id():  # чужим не отвечаем вообще
+            admin_grant(chat_id, parts[1:])
+        return
     if text.startswith("/start"):
-        hello = "Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос."
+        hello ="Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос."
         note = "" if WEBAPP_URL else "\n\n(Адрес мини-аппа ещё не настроен.)"
         tg("sendMessage", chat_id=chat_id, text=hello + note, reply_markup=start_markup())
         return
@@ -345,6 +369,7 @@ def handle_update(upd):
         print("consult error:", e)
         tg("sendMessage", chat_id=chat_id, text="Сейчас не получается ответить, попробуйте чуть позже.")
         return
+    log_reading(uid, "followup", "", text, res.get("title", ""))  # сообщения в чате тоже видны в админке
     kwargs = {"reply_markup": webapp_markup()} if WEBAPP_URL else {}
     tg("sendMessage", chat_id=chat_id, text=(res["reply"] or res["intro"] or "Откройте приложение, чтобы сделать расклад.")[:4000], **kwargs)
 

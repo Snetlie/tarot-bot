@@ -80,12 +80,14 @@ input[type=search] { width:100%; background:rgba(0,0,0,.25); border:1px solid va
 
     <div class="tabs">
       <button class="tab on" data-t="users">Пользователи</button>
+      <button class="tab" data-t="req">Запросы</button>
       <button class="tab" data-t="pay">Оплаты</button>
     </div>
     <section id="tUsers">
       <input type="search" id="find" placeholder="Поиск: имя, @username или ID">
       <div id="users"></div>
     </section>
+    <section id="tReq" class="hidden"><div id="reqs"></div></section>
     <section id="tPay" class="hidden"><div id="pays"></div></section>
   </div>
 </main>
@@ -142,6 +144,20 @@ function renderUsers() {
   });
   if (list.length > shown) { const b = el('button', 'more', 'Показать ещё (' + (list.length - shown) + ')'); b.onclick = () => { shown += 50; renderUsers(); }; box.appendChild(b); }
 }
+const KIND = {reading: 'Расклад', followup: 'Сообщение', deep_dive: 'Глубокий разбор'};
+function renderReqs() {
+  const box = $('reqs'); box.innerHTML = '';
+  if (!data.requests.length) { box.appendChild(el('div', 'empty', 'Запросов пока нет.')); return; }
+  data.requests.forEach(r => {
+    const row = el('div', 'row'); row.appendChild(el('div', 'av', (r.first_name || r.username || '?').slice(0, 1).toUpperCase()));
+    const m = el('div', 'm');
+    m.appendChild(el('b', '', (KIND[r.kind] || r.kind) + (r.spread ? ' · ' + r.spread : '')));
+    m.appendChild(el('small', '', (r.question || '').slice(0, 120)));
+    row.appendChild(m);
+    const t = el('div', 'r'); t.appendChild(el('b', '', r.first_name || (r.username ? '@' + r.username : 'ID ' + r.uid))); t.appendChild(el('div', '', ago(r.ts))); row.appendChild(t);
+    row.onclick = () => openUser(r.uid); box.appendChild(row);
+  });
+}
 function renderPays() {
   const box = $('pays'); box.innerHTML = '';
   if (!data.payments.length) { box.appendChild(el('div', 'empty', 'Оплат пока нет. Здесь появятся платежи, когда вы подключите оплату.')); return; }
@@ -160,9 +176,11 @@ async function openUser(id) {
     const d = await api('/api/admin/user', {id}); const u = d.user; sh.innerHTML = '';
     if (!u) { sh.appendChild(el('div', 'empty', 'Пользователь не найден')); return; }
     sh.appendChild(el('h2', '', name(u)));
-    const kv = el('div', 'kv');
+    const kv = el('div', 'kv'), q = d.quota;
+    const plan = q.unlimited_until > Date.now() / 1000 ? 'безлимит до ' + fmtDate(q.unlimited_until).slice(0, 8) : 'без безлимита';
     [['ID', u.id], ['Username', u.username ? '@' + u.username : '—'], ['Язык', u.language || '—'], ['Дата рождения', u.birth_date ? u.birth_date.split('-').reverse().join('.') : '—'],
-     ['Первый визит', fmtDate(u.first_seen)], ['Последний визит', fmtDate(u.last_seen)], ['Раскладов', u.readings]].forEach(([k, v]) => { kv.appendChild(el('span', '', k)); kv.appendChild(el('div', '', v)); });
+     ['Первый визит', fmtDate(u.first_seen)], ['Последний визит', fmtDate(u.last_seen)], ['Раскладов', u.readings],
+     ['Бесплатных осталось', q.free], ['Купленных осталось', q.credits], ['Тариф', plan]].forEach(([k, v]) => { kv.appendChild(el('span', '', k)); kv.appendChild(el('div', '', v)); });
     sh.appendChild(kv);
     if (u.username) { const a = el('a', 'more', 'Открыть в Telegram'); a.href = 'https://t.me/' + u.username; a.style.cssText = 'display:block;text-align:center;text-decoration:none'; a.onclick = e => { e.preventDefault(); tg.openTelegramLink(a.href); }; sh.appendChild(a); }
     sh.appendChild(el('h3', '', 'Оплаты')); sh.lastChild.style.cssText = 'font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--gold);margin:18px 0 4px';
@@ -181,7 +199,7 @@ async function load() {
   try {
     data = await api('/api/admin/overview');
     $('lock').classList.add('hidden'); $('app').classList.remove('hidden');
-    renderStats(); chart('chU', 'axU', data.series.users); chart('chR', 'axR', data.series.readings); renderUsers(); renderPays();
+    renderStats(); chart('chU', 'axU', data.series.users); chart('chR', 'axR', data.series.readings); renderUsers(); renderReqs(); renderPays();
     $('upd').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
   } catch (e) {
     $('app').classList.add('hidden'); $('lock').classList.remove('hidden');
@@ -193,7 +211,7 @@ $('ref').onclick = load;
 $('find').oninput = () => { shown = 50; renderUsers(); };
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
-  $('tUsers').classList.toggle('hidden', t.dataset.t !== 'users'); $('tPay').classList.toggle('hidden', t.dataset.t !== 'pay');
+  ['users', 'req', 'pay'].forEach(k => $(k === 'users' ? 'tUsers' : k === 'req' ? 'tReq' : 'tPay').classList.toggle('hidden', t.dataset.t !== k));
 });
 load();
 </script>
