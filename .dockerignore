@@ -1,0 +1,8 @@
+.env
+*.db
+*.log
+*.err
+__pycache__
+.git
+start.bat
+start.ps1

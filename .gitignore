@@ -1,0 +1,7 @@
+.env
+data.db
+*.db
+__pycache__/
+*.log
+*.err
+last_reading.json
