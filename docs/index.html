@@ -241,11 +241,40 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
 .front { isolation: isolate; }
 .tag { position: absolute; top: 5%; left: 7%; font: 600 7cqw var(--sans); color: var(--muted); letter-spacing: .05em; }
 
+/* ---------- тарифы ---------- */
+.plash { width: 100%; display: flex; align-items: center; gap: 12px; margin-top: 14px; padding: 12px 14px; cursor: pointer; text-align: left;
+  color: var(--text); background: var(--glass); border: 1px solid var(--line); border-radius: 18px;
+  backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px); }
+.plash .ic { width: 36px; height: 36px; flex: none; border-radius: 12px; display: grid; place-items: center; font-size: 17px; background: rgba(230,198,117,.14); }
+.plash b { display: block; font: 600 14.5px var(--sans); }
+.plash small { display: block; color: var(--muted); font-size: 12.5px; }
+.plash .chev { margin-left: auto; color: var(--muted); font-size: 20px; }
+.plash.unlim { border-color: rgba(230,198,117,.6); background: linear-gradient(160deg, rgba(139,108,240,.3), rgba(139,108,240,.1)); }
+.plash.out { border-color: rgba(255,148,168,.6); background: linear-gradient(160deg, rgba(255,148,168,.18), rgba(255,148,168,.05)); }
+.plash.out .ic { background: rgba(255,148,168,.2); }
+.sheet-bg { position: fixed; inset: 0; z-index: 9; background: rgba(4,3,12,.6); backdrop-filter: blur(3px); -webkit-backdrop-filter: blur(3px); }
+.sheet { position: fixed; left: 0; right: 0; bottom: 0; z-index: 10; max-width: 520px; margin: 0 auto; padding: 10px 18px calc(18px + env(safe-area-inset-bottom));
+  background: #151232; border: 1px solid var(--line); border-radius: 26px 26px 0 0; box-shadow: 0 -20px 50px rgba(0,0,0,.5); animation: rise .35s var(--ease) both; }
+.grip { width: 42px; height: 4px; border-radius: 4px; background: var(--line); margin: 0 auto 14px; }
+.sheet-title { display: block; font: 700 24px/1.1 var(--serif); color: var(--gold2); }
+.sheet-status { margin: 6px 0 14px; font-size: 13.5px; color: var(--muted); }
+.plan { width: 100%; display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 10px; padding: 14px 16px; cursor: pointer; text-align: left;
+  color: var(--text); background: rgba(0,0,0,.25); border: 1px solid var(--line); border-radius: 18px; transition: all .2s var(--ease); }
+.plan:active { transform: scale(.98); }
+.plan:disabled { opacity: .5; }
+.plan b { display: block; font: 600 15.5px var(--sans); }
+.plan small { color: var(--muted); font-size: 12.5px; }
+.plan .price { font: 700 18px var(--sans); color: var(--gold2); white-space: nowrap; }
+.plan.best { border-color: rgba(230,198,117,.6); background: linear-gradient(160deg, rgba(139,108,240,.3), rgba(139,108,240,.1)); }
+.sheet-note { min-height: 18px; margin: 4px 0 10px; font-size: 13px; color: var(--rose); }
+.sheet-close { width: 100%; padding: 13px; border: 0; border-radius: 16px; cursor: pointer; color: var(--text); background: var(--glass2); font: 500 15px var(--sans); }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition-duration: .01s !important; } }
 </style>
 </head>
 <body>
 <main>
+  <button class="plash" id="planBtn" type="button"><span class="ic" id="plashIc">💳</span><span><b id="plashTitle">Тарифы</b><small id="plashSub">Безлимит и пакеты запросов</small></span><span class="chev">›</span></button>
   <section id="setup">
     <div class="hero">
       <div class="wheel" id="wheel" aria-hidden="true"></div>
@@ -300,6 +329,16 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
     <div id="anchor"></div>
   </section>
 </main>
+
+<div class="sheet-bg hidden" id="sheetBg"></div>
+<div class="sheet hidden" id="sheet" role="dialog" aria-modal="true" aria-labelledby="sheetTitle">
+  <div class="grip"></div>
+  <b class="sheet-title" id="sheetTitle">Тарифы</b>
+  <p class="sheet-status" id="sheetStatus"></p>
+  <div id="plans"></div>
+  <p class="sheet-note" id="sheetNote"></p>
+  <button class="sheet-close" id="sheetClose" type="button">Закрыть</button>
+</div>
 
 <div class="dock" id="dockSetup"><div><button class="go" id="go" disabled>Разложить карты</button></div></div>
 <div class="dock hidden" id="dockChat"><div class="composer">
@@ -377,7 +416,11 @@ async function api(path, body) {
   const r = await fetch((window.API_BASE || '') + path, {method: 'POST',
     headers: {'Content-Type': 'application/json', 'X-Init-Data': tg.initData}, body: JSON.stringify(body)});
   const data = await r.json().catch(() => ({}));
-  if (!r.ok) throw new Error(data.error || 'Ошибка связи, попробуйте ещё раз');
+  if (!r.ok) {
+    const err = new Error(data.error || 'Ошибка связи, попробуйте ещё раз');
+    err.status = r.status;
+    throw err;
+  }
   return data;
 }
 
@@ -507,6 +550,7 @@ async function run(path, body, text) {
     const res = await api(path, body);
     if (res.cards && res.cards.length) { revealCards(res.cards); await new Promise(r => setTimeout(r, 600 + res.cards.length * 330)); }
     if (res.mode === 'reading') hasReading = true;
+    loadQuota();
     addResult(res);
     try { tg.HapticFeedback && tg.HapticFeedback.notificationOccurred('success'); } catch (e) {}
     setBusy(false);
@@ -515,6 +559,7 @@ async function run(path, body, text) {
   } catch (e) {
     if (isReading) $('stage').classList.remove('wait');
     addError(e.message, () => { document.querySelectorAll('.err-wrap').forEach(x => x.remove()); mine.remove(); run(path, body, text); });
+    if (e.status === 402) openPlans('Выберите тариф, чтобы продолжить.');
     setBusy(false);
     setTimeout(scrollEnd, 120);
   }
@@ -615,6 +660,76 @@ fetch((window.API_BASE || '') + '/api/spreads').then(r => r.json()).then(list =>
   });
   select(spread, true);
 });
+
+/* тарифы */
+function renderPlans(q) {
+  const unlimited = q.unlimited_until > Date.now() / 1000;
+  const left = q.free + q.credits;
+  const plash = $('planBtn');
+  plash.classList.toggle('unlim', unlimited);
+  plash.classList.toggle('out', !unlimited && left === 0);
+  if (unlimited) {
+    $('plashIc').textContent = '✦';
+    $('plashTitle').textContent = 'Безлимит активен';
+    $('plashSub').textContent = 'до ' + new Date(q.unlimited_until * 1000).toLocaleDateString('ru-RU');
+  } else if (left === 0) {
+    $('plashIc').textContent = '⏳';
+    $('plashTitle').textContent = 'Лимит запросов исчерпан';
+    $('plashSub').textContent = 'Выберите тариф, чтобы продолжить';
+  } else {
+    $('plashIc').textContent = '💳';
+    $('plashTitle').textContent = 'Осталось запросов: ' + left;
+    $('plashSub').textContent = 'Пакеты и безлимит в тарифах';
+  }
+  $('sheetStatus').textContent = unlimited
+    ? 'Безлимит активен до ' + new Date(q.unlimited_until * 1000).toLocaleDateString('ru-RU')
+    : 'Бесплатных запросов: ' + q.free + ' · купленных: ' + q.credits;
+  $('plans').innerHTML = '';
+  q.plans.forEach(p => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'plan' + (p.id === 'unlimited' ? ' best' : ''); b.dataset.id = p.id;
+    b.innerHTML = '<span><b></b><small></small></span><span class="price"></span>';
+    b.querySelector('b').textContent = p.title;
+    b.querySelector('small').textContent = p.description;
+    b.querySelector('.price').textContent = p.price + ' ₽';
+    b.onclick = () => buyPlan(p.id);
+    $('plans').appendChild(b);
+  });
+}
+async function loadQuota() {
+  try { renderPlans(await api('/api/quota', {})); }
+  catch (e) { $('sheetNote').textContent = e.message; }
+}
+function openPlans(note) {
+  $('sheetBg').classList.remove('hidden'); $('sheet').classList.remove('hidden');
+  $('sheetNote').textContent = note || '';
+  loadQuota();
+}
+function closePlans() { $('sheetBg').classList.add('hidden'); $('sheet').classList.add('hidden'); }
+function setPlansBusy(v) { document.querySelectorAll('.plan').forEach(x => x.disabled = v); }
+async function buyPlan(id) {
+  setPlansBusy(true); $('sheetNote').textContent = '';
+  try {
+    const {url} = await api('/api/invoice', {plan: id});
+    if (!tg.openInvoice) throw new Error('Эта версия Telegram не открывает оплату. Напишите боту /tariffs.');
+    tg.openInvoice(url, status => {
+      setPlansBusy(false);
+      if (status === 'paid') {
+        buzz(); loadQuota();
+        setTimeout(loadQuota, 2500); // бот получает подтверждение оплаты чуть позже
+      } else if (status === 'failed') {
+        $('sheetNote').textContent = 'Оплата не прошла. Попробуйте ещё раз.';
+      }
+    });
+  } catch (e) {
+    $('sheetNote').textContent = e.message;
+    setPlansBusy(false);
+  }
+}
+$('planBtn').onclick = () => openPlans();
+$('sheetBg').onclick = closePlans;
+$('sheetClose').onclick = closePlans;
+loadQuota();
 function select(id, quiet) {
   const s = spreadList.find(x => x.id === id); if (!s) return;
   spread = id; spreadName = s.name; spreadCount = s.count;

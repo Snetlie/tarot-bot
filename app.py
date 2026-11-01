@@ -44,6 +44,20 @@ PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
 SYSTEM_PROMPT = (ROOT / "prompt.md").read_text(encoding="utf-8")
 HISTORY_LIMIT = 10
 COOLDOWN_SEC = 3
+FREE_REQUESTS = 3  # бесплатных запросов на пользователя, дальше нужен тариф
+# цены в рублях; оплата через Telegram (провайдер платежей из PAYMENT_PROVIDER_TOKEN)
+PLANS = {
+    "pack5": {"button": "5 запросов — 129 ₽", "title": "5 запросов", "description": "Пять запросов к таро",
+              "price": 129, "requests": 5, "days": 0},
+    "pack10": {"button": "10 запросов — 169 ₽", "title": "10 запросов", "description": "Десять запросов к таро",
+               "price": 169, "requests": 10, "days": 0},
+    "unlimited": {"button": "Безлимит на 30 дней — 499 ₽", "title": "Безлимит на 30 дней",
+                  "description": "Безлимитные запросы к таро на 30 дней", "price": 499, "requests": 0, "days": 30},
+}
+
+class QuotaExceeded(Exception):
+    pass
+
 
 histories = {}  # user_id -> [{"role": "user"|"assistant", "text": str}]
 last_call = {}
@@ -79,6 +93,11 @@ def init_db():
             CREATE INDEX IF NOT EXISTS idx_readings_uid ON readings(uid, ts);
             CREATE INDEX IF NOT EXISTS idx_payments_uid ON payments(uid, ts);
         """)
+        # колонки тарифов появились позже, добавляем их в уже существующую базу
+        cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
+        for name in ("free_used", "credits", "unlimited_until"):
+            if name not in cols:
+                c.execute(f"ALTER TABLE users ADD COLUMN {name} INTEGER DEFAULT 0")
 
 
 def touch_user(u, birth=None):
@@ -101,6 +120,50 @@ def log_reading(uid, kind, spread, question, title):
                   (uid, int(time.time()), kind, spread, question[:300], title))
         if kind == "reading":
             c.execute("UPDATE users SET readings = readings + 1 WHERE id = ?", (uid,))
+
+
+def quota(uid):
+    with closing(db()) as c:
+        row = c.execute("SELECT free_used, credits, unlimited_until FROM users WHERE id=?", (uid,)).fetchone()
+    used = row["free_used"] or 0 if row else 0
+    return {"free": max(FREE_REQUESTS - used, 0), "credits": row["credits"] or 0 if row else 0,
+            "unlimited_until": row["unlimited_until"] or 0 if row else 0}
+
+
+def has_quota(uid):
+    q = quota(uid)
+    return q["unlimited_until"] > time.time() or q["free"] > 0 or q["credits"] > 0
+
+
+def spend_request(uid):
+    """Сначала списываются бесплатные запросы, потом купленные. По безлимиту ничего не списывается."""
+    with closing(db()) as c, c:
+        row = c.execute("SELECT free_used, credits, unlimited_until FROM users WHERE id=?", (uid,)).fetchone()
+        if row is None or (row["unlimited_until"] or 0) > time.time():
+            return
+        if (row["free_used"] or 0) < FREE_REQUESTS:
+            c.execute("UPDATE users SET free_used = free_used + 1 WHERE id=?", (uid,))
+        elif (row["credits"] or 0) > 0:
+            c.execute("UPDATE users SET credits = credits - 1 WHERE id=?", (uid,))
+
+
+def grant_plan(uid, plan_id, charge_id, total_kop):
+    plan = PLANS[plan_id]
+    if total_kop != plan["price"] * 100:
+        return False
+    now = int(time.time())
+    with closing(db()) as c, c:
+        # Telegram может прислать одно и то же успешное платёж дважды: учитываем его один раз
+        if c.execute("SELECT 1 FROM payments WHERE provider='telegram' AND note LIKE ?", (f"%{charge_id}",)).fetchone():
+            return False
+        c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
+                  (uid, now, plan["price"], "RUB", "paid", "telegram", f"{plan_id} {charge_id}"))
+        if plan["days"]:
+            c.execute("UPDATE users SET unlimited_until = MAX(unlimited_until, ?) + ? WHERE id=?",
+                      (now, plan["days"] * 86400, uid))
+        else:
+            c.execute("UPDATE users SET credits = credits + ? WHERE id=?", (plan["requests"], uid))
+    return True
 
 
 def get_admin_id():
@@ -184,12 +247,76 @@ def webapp_markup():
     return {"inline_keyboard": [[{"text": "🔮 Открыть таро", "web_app": {"url": WEBAPP_URL}}]]}
 
 
+def start_markup():
+    rows = [[{"text": "🔮 Открыть таро", "web_app": {"url": WEBAPP_URL}}]] if WEBAPP_URL else []
+    rows.append([{"text": "💳 Тарифы", "callback_data": "tariffs"}])
+    return {"inline_keyboard": rows}
+
+
+def send_tariffs(chat_id, uid, intro=""):
+    q = quota(uid)
+    if q["unlimited_until"] > time.time():
+        status = "Безлимит активен до " + time.strftime("%d.%m.%Y", time.localtime(q["unlimited_until"]))
+    else:
+        status = f"Бесплатных запросов осталось: {q['free']}. Купленных: {q['credits']}."
+    text = "\n".join(p for p in (intro, status, "Выберите тариф:") if p)
+    tg("sendMessage", chat_id=chat_id, text=text, reply_markup={"inline_keyboard": [
+        [{"text": p["button"], "callback_data": "buy:" + k}] for k, p in PLANS.items()]})
+
+
+def invoice_fields(plan_id):
+    token = os.environ.get("PAYMENT_PROVIDER_TOKEN", "")
+    if not token:
+        raise ValueError("Оплата скоро появится. Пока тарифы можно только посмотреть.")
+    plan = PLANS[plan_id]
+    return {"title": plan["title"], "description": plan["description"], "payload": plan_id,
+            "provider_token": token, "currency": "RUB", "prices": [{"label": plan["title"], "amount": plan["price"] * 100}]}
+
+
+def send_invoice(chat_id, plan_id):
+    try:
+        tg("sendInvoice", chat_id=chat_id, **invoice_fields(plan_id))
+    except ValueError as e:
+        tg("sendMessage", chat_id=chat_id, text=str(e))
+
+
+def quota_info(uid):
+    return {**quota(uid), "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"]}
+                                    for k, p in PLANS.items()]}
+
+
+def handle_callback(cq):
+    tg("answerCallbackQuery", callback_query_id=cq["id"])
+    chat_id, uid, data = cq["message"]["chat"]["id"], cq["from"]["id"], cq.get("data", "")
+    if data == "tariffs":
+        send_tariffs(chat_id, uid)
+    elif data.startswith("buy:") and data[4:] in PLANS:
+        send_invoice(chat_id, data[4:])
+
+
+def handle_payment(chat_id, uid, pay):
+    plan_id = pay.get("invoice_payload", "")
+    if plan_id in PLANS and grant_plan(uid, plan_id, pay["telegram_payment_charge_id"], pay["total_amount"]):
+        send_tariffs(chat_id, uid, f"Оплата прошла: «{PLANS[plan_id]['title']}» подключён. Спасибо!")
+
+
 def handle_update(upd):
-    msg = upd.get("message")
-    if not msg or "text" not in msg:
+    if "pre_checkout_query" in upd:  # Telegram спрашивает перед списанием денег
+        q = upd["pre_checkout_query"]
+        tg("answerPreCheckoutQuery", pre_checkout_query_id=q["id"], ok=q["invoice_payload"] in PLANS)
         return
-    chat_id, uid, text = msg["chat"]["id"], msg["from"]["id"], msg["text"]
+    if "callback_query" in upd:
+        return handle_callback(upd["callback_query"])
+    msg = upd.get("message")
+    if not msg:
+        return
+    chat_id, uid = msg["chat"]["id"], msg["from"]["id"]
     touch_user(msg["from"])
+    if "successful_payment" in msg:
+        return handle_payment(chat_id, uid, msg["successful_payment"])
+    if "text" not in msg:
+        return
+    text = msg["text"]
     if text.split("@")[0].strip() == ADMIN_COMMAND:
         # секретная команда: чужим не отвечаем вообще
         admin = get_admin_id()
@@ -201,17 +328,19 @@ def handle_update(upd):
         return
     if text.startswith("/start"):
         hello = "Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос."
-        if WEBAPP_URL:
-            tg("sendMessage", chat_id=chat_id, text=hello, reply_markup=webapp_markup())
-        else:
-            tg("sendMessage", chat_id=chat_id, text=hello + "\n\n(Адрес мини-аппа ещё не настроен.)")
+        note = "" if WEBAPP_URL else "\n\n(Адрес мини-аппа ещё не настроен.)"
+        tg("sendMessage", chat_id=chat_id, text=hello + note, reply_markup=start_markup())
         return
+    if text.startswith("/tariffs") or text.startswith("/buy"):
+        return send_tariffs(chat_id, uid)
     if text.startswith("/"):
         return
     # обычное сообщение в чате: разговор без раскладки
     tg("sendChatAction", chat_id=chat_id, action="typing")
     try:
         res = consult(uid, text, request_type="followup")
+    except QuotaExceeded:
+        return send_tariffs(chat_id, uid, "Бесплатные запросы закончились. Выберите тариф:")
     except Exception as e:  # noqa: BLE001
         print("consult error:", e)
         tg("sendMessage", chat_id=chat_id, text="Сейчас не получается ответить, попробуйте чуть позже.")
@@ -224,7 +353,8 @@ def poll_loop():
     offset = 0
     while True:
         try:
-            r = tg("getUpdates", offset=offset, timeout=30, allowed_updates=["message"])
+            r = tg("getUpdates", offset=offset, timeout=30,
+                   allowed_updates=["message", "callback_query", "pre_checkout_query"])
             for upd in r["result"]:
                 offset = upd["update_id"] + 1
                 try:
@@ -356,6 +486,8 @@ def consult(uid, question, spread="", drawn=(), birth=None, request_type="readin
         now = time.time()
         if now - last_call.get(uid, 0) < COOLDOWN_SEC:
             raise PermissionError("too_fast")
+        if not has_quota(uid):
+            raise QuotaExceeded()
         last_call[uid] = now
         history = list(histories.get(uid, []))
         last = last_readings.get(uid)
@@ -393,6 +525,7 @@ def consult(uid, question, spread="", drawn=(), birth=None, request_type="readin
         for mc, c in zip(res["cards"], drawn):  # карты и позиции берём у приложения, смысл — у модели
             mc.update(position=c["position"], card=c["name"], orientation="reversed" if c["reversed"] else "upright")
     text = plain_text(res)
+    spend_request(uid)
     with state_lock:
         if request_type == "reading" and res["mode"] == "reading":
             last_readings[uid] = {"question": question, "spread": spread, "cards": card_lines, "text": text, "topic": topic}
@@ -494,6 +627,16 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply_json(200, admin_user(int(body.get("id", 0))))
             return self.send_error(404)
         touch_user(user, body.get("birth_date"))
+        if path == "/api/quota":
+            return self.reply_json(200, quota_info(uid))
+        if path == "/api/invoice":
+            if body.get("plan") not in PLANS:
+                return self.reply_json(400, {"error": "Неизвестный тариф."})
+            try:
+                link = tg("createInvoiceLink", **invoice_fields(body["plan"]))["result"]
+            except ValueError as e:
+                return self.reply_json(400, {"error": str(e)})
+            return self.reply_json(200, {"url": link})
         question = str(body.get("question", "")).strip()[:1000]
         if not question and path != "/api/deepdive":
             return self.reply_json(400, {"error": "Напишите вопрос."})
@@ -514,6 +657,12 @@ class Handler(BaseHTTPRequestHandler):
             return self.reply_json(400, {"error": "Сначала сделайте расклад."})
         except PermissionError:
             return self.reply_json(429, {"error": "Не так быстро, подождите пару секунд."})
+        except QuotaExceeded:
+            try:
+                send_tariffs(uid, uid, "Бесплатные запросы закончились. Выберите тариф:")
+            except Exception as e:  # noqa: BLE001
+                print("tariffs send error:", e)
+            return self.reply_json(402, {"error": "Бесплатные запросы закончились. Тарифы — в чате с ботом (/tariffs)."})
         except Exception as e:  # noqa: BLE001
             print("consult error:", e)
             return self.reply_json(502, {"error": "Не удалось получить ответ. Попробуйте позже."})
