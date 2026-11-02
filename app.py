@@ -1,10 +1,12 @@
 """Telegram-бот «Ответы на ваши вопросы таро» + мини-апп. Только стандартная библиотека."""
+import base64
 import hashlib
 import hmac
 import html as htmllib
 import json
 import os
 import re
+import secrets
 import sqlite3
 import threading
 import time
@@ -73,6 +75,10 @@ ALL_OFFERS = {**PLANS, **DONATIONS}
 OPERATOR_NAME = (os.environ.get("OPERATOR_NAME") or "ИП Родионов Даниил Вадимович").strip()
 SUPPORT_EMAIL = (os.environ.get("SUPPORT_EMAIL") or "drodii198@gmail.com").strip()
 SUPPORT_TG = (os.environ.get("SUPPORT_TG") or "Snetlie").strip().lstrip("@")
+SHARE_MAX_BYTES = 700_000  # картинка расклада «поделиться» (JPEG)
+SHARE_DAILY_LIMIT = 20  # публикаций от одного человека в сутки
+SHARE_KEEP_DAYS = 90
+BOT_USERNAME = os.environ.get("BOT_USERNAME", "").strip().lstrip("@")
 TICKET_DAILY_LIMIT = 5  # новых обращений от одного человека в сутки
 TICKET_MESSAGE_LIMIT = 50  # сообщений в одном обращении
 
@@ -121,12 +127,19 @@ def init_db():
                 id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, ts INTEGER, author TEXT, text TEXT);
             CREATE INDEX IF NOT EXISTS idx_tickets_uid ON tickets(uid, updated);
             CREATE INDEX IF NOT EXISTS idx_ticket_messages ON ticket_messages(ticket_id, id);
+            CREATE TABLE IF NOT EXISTS shares (
+                token TEXT PRIMARY KEY, uid INTEGER, ts INTEGER, title TEXT, text TEXT);
+            CREATE INDEX IF NOT EXISTS idx_shares_uid ON shares(uid, ts);
         """)
         # колонки тарифов появились позже, добавляем их в уже существующую базу
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
         for name in ("free_used", "credits", "unlimited_until"):
             if name not in cols:
                 c.execute(f"ALTER TABLE users ADD COLUMN {name} INTEGER DEFAULT 0")
+        # оценка ответа: 1 — полезно, -1 — не очень, 0 — не оценено
+        rcols = {r["name"] for r in c.execute("PRAGMA table_info(readings)")}
+        if "rating" not in rcols:
+            c.execute("ALTER TABLE readings ADD COLUMN rating INTEGER DEFAULT 0")
 
 
 def touch_user(u, birth=None):
@@ -144,11 +157,22 @@ def touch_user(u, birth=None):
 
 
 def log_reading(uid, kind, spread, question, title):
+    """Записывает обращение и возвращает его id, по нему потом ставится оценка."""
     with closing(db()) as c, c:
-        c.execute("INSERT INTO readings (uid, ts, kind, spread, question, title) VALUES (?,?,?,?,?,?)",
-                  (uid, int(time.time()), kind, spread, question[:300], title))
+        rid = c.execute("INSERT INTO readings (uid, ts, kind, spread, question, title) VALUES (?,?,?,?,?,?)",
+                        (uid, int(time.time()), kind, spread, question[:300], title)).lastrowid
         if kind == "reading":
             c.execute("UPDATE users SET readings = readings + 1 WHERE id = ?", (uid,))
+    return rid
+
+
+def set_rating(uid, rid, value):
+    if value not in (1, -1):
+        raise ValueError("Неверная оценка.")
+    with closing(db()) as c, c:
+        cur = c.execute("UPDATE readings SET rating=? WHERE id=? AND uid=?", (value, rid, uid))
+    if cur.rowcount == 0:
+        raise LookupError("Ответ не найден.")
 
 
 def quota(uid):
@@ -348,6 +372,78 @@ def admin_ticket(tid):
     return {"ticket": dict(t), "messages": msgs}
 
 
+# ---------- «Поделиться»: картинка расклада и страница с превью ----------
+
+SHARE_TOKEN_RE = r"[A-Za-z0-9_-]{6,16}"
+
+
+def bot_username():
+    global BOT_USERNAME
+    if not BOT_USERNAME:
+        try:
+            BOT_USERNAME = tg("getMe")["result"]["username"]
+        except Exception as e:  # noqa: BLE001
+            print("getMe error:", e)
+    return BOT_USERNAME
+
+
+def share_dir():
+    return DB_PATH.parent / "share"
+
+
+def save_share(uid, data_url, title, text):
+    m = re.fullmatch(r"data:image/jpeg;base64,([A-Za-z0-9+/=]+)", str(data_url))
+    if not m:
+        raise ValueError("Неверная картинка.")
+    raw = base64.b64decode(m.group(1))
+    if len(raw) > SHARE_MAX_BYTES or not raw.startswith(b"\xff\xd8\xff"):
+        raise ValueError("Картинка слишком большая или повреждена.")
+    now = int(time.time())
+    token = secrets.token_urlsafe(8)
+    with closing(db()) as c, c:
+        if c.execute("SELECT COUNT(*) FROM shares WHERE uid=? AND ts>=?", (uid, now - 86400)).fetchone()[0] >= SHARE_DAILY_LIMIT:
+            raise ValueError("Слишком много публикаций за сутки. Попробуйте завтра.")
+        c.execute("INSERT INTO shares (token, uid, ts, title, text) VALUES (?,?,?,?,?)",
+                  (token, uid, now, str(title).strip()[:120], str(text).strip()[:200]))
+    d = share_dir()
+    d.mkdir(parents=True, exist_ok=True)
+    (d / f"{token}.jpg").write_bytes(raw)
+    for old in d.glob("*.jpg"):  # старые картинки удаляем, чтобы диск не рос
+        try:
+            if now - old.stat().st_mtime > SHARE_KEEP_DAYS * 86400:
+                old.unlink()
+        except OSError:
+            pass
+    return token
+
+
+def share_html(token, base):
+    with closing(db()) as c:
+        row = c.execute("SELECT * FROM shares WHERE token=?", (token,)).fetchone()
+    if row is None or not (share_dir() / f"{token}.jpg").exists():
+        return None
+    title = htmllib.escape(row["title"] or "Расклад Таро")
+    desc = htmllib.escape(row["text"] or "Расклад Таро Уэйта в Telegram за минуту")
+    bot = bot_username()
+    link = htmllib.escape(f"https://t.me/{bot}" if bot else base)
+    img = htmllib.escape(f"{base}/share/{token}.jpg")
+    return f"""<!doctype html>
+<html lang="ru"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title>
+<meta property="og:type" content="website">
+<meta property="og:title" content="{title}">
+<meta property="og:description" content="{desc}">
+<meta property="og:image" content="{img}">
+<meta name="twitter:card" content="summary_large_image">
+<style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0916;color:#f4f0fb;font:16px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif}}
+main{{max-width:640px;padding:20px;text-align:center}}img{{width:100%;border-radius:18px;box-shadow:0 20px 50px rgba(0,0,0,.5)}}
+h1{{font:700 24px Georgia,serif;color:#f8e6b0;margin:18px 0 6px}}p{{color:#9b96b6;margin:0 0 18px}}
+a{{display:inline-block;padding:14px 26px;border-radius:16px;background:linear-gradient(135deg,#f8e6b0,#e6c675);color:#251b06;font-weight:600;text-decoration:none}}</style>
+</head><body><main><img src="{img}" alt="{title}"><h1>{title}</h1><p>{desc}</p>
+<a href="{link}">Получить свой расклад</a></main></body></html>"""
+
+
 def get_admin_id():
     env = os.environ.get("ADMIN_ID", "").strip()
     if env.isdigit():
@@ -380,6 +476,8 @@ def admin_overview():
             "paid_total": one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='paid'"),
             "paid_count": one("SELECT COUNT(*) FROM payments WHERE status='paid'"),
             "tickets_open": one("SELECT COUNT(*) FROM tickets WHERE status='open'"),
+            "rated_good": one("SELECT COUNT(*) FROM readings WHERE rating=1"),
+            "rated_bad": one("SELECT COUNT(*) FROM readings WHERE rating=-1"),
         }
         series = {}
         queries = (("users", "SELECT date(first_seen,'unixepoch','localtime') d, COUNT(*) n FROM users WHERE first_seen >= ? GROUP BY d"),
@@ -395,7 +493,7 @@ def admin_overview():
             """SELECT p.*, u.username, u.first_name FROM payments p LEFT JOIN users u ON u.id = p.uid
                ORDER BY p.ts DESC LIMIT 500""")]
         requests = [dict(r) for r in c.execute(
-            """SELECT r.ts, r.kind, r.spread, r.question, r.uid, u.username, u.first_name, u.last_name
+            """SELECT r.ts, r.kind, r.spread, r.question, r.uid, r.rating, u.username, u.first_name, u.last_name
                FROM readings r LEFT JOIN users u ON u.id = r.uid ORDER BY r.ts DESC LIMIT 300""")]
         tickets = [dict(r) for r in c.execute(
             """SELECT t.id, t.uid, t.ts, t.updated, t.subject, t.status, u.username, u.first_name, u.last_name,
@@ -549,7 +647,7 @@ def send_invoice(chat_id, plan_id):
 
 
 def quota_info(uid):
-    return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES,
+    return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES, "bot": BOT_USERNAME,
             "donations": [{"id": k, "price": p["price"]} for k, p in DONATIONS.items()],
             "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"],
                        "detail": plan_detail(p)} for k, p in PLANS.items()]}
@@ -875,8 +973,36 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(body)
 
+    def public_base(self):
+        return WEBAPP_URL or "https://" + self.headers.get("Host", "")
+
     def do_GET(self):
         path = urllib.parse.urlparse(self.path).path
+        m = re.fullmatch(rf"/s/({SHARE_TOKEN_RE})", path)
+        if m:
+            page = share_html(m.group(1), self.public_base())
+            if page is None:
+                return self.send_error(404)
+            body = page.encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        m = re.fullmatch(rf"/share/({SHARE_TOKEN_RE})\.jpg", path)
+        if m:
+            f = share_dir() / f"{m.group(1)}.jpg"
+            if not f.is_file():
+                return self.send_error(404)
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "public, max-age=86400")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path == "/api/spreads":
             return self.reply_json(200, [{"id": k, "name": v["name"], "count": len(v["positions"])}
                                          for k, v in cards.SPREADS.items()])
@@ -911,7 +1037,10 @@ class Handler(BaseHTTPRequestHandler):
         if not user:
             return self.reply_json(401, {"error": "Откройте приложение из Telegram."})
         try:
-            body = json.loads(self.rfile.read(int(self.headers.get("Content-Length", 0))) or b"{}")
+            length = int(self.headers.get("Content-Length", 0))
+            if length > 1_500_000:
+                return self.reply_json(413, {"error": "Слишком большой запрос."})
+            body = json.loads(self.rfile.read(length) or b"{}")
         except ValueError:
             return self.reply_json(400, {"error": "bad json"})
         uid = user["id"]
@@ -948,6 +1077,20 @@ class Handler(BaseHTTPRequestHandler):
             except ValueError as e:
                 return self.reply_json(400, {"error": str(e)})
             return self.reply_json(200, {"url": link})
+        if path == "/api/share":
+            try:
+                token = save_share(uid, body.get("image", ""), body.get("title", ""), body.get("text", ""))
+            except ValueError as e:
+                return self.reply_json(400, {"error": str(e)})
+            return self.reply_json(200, {"url": f"{self.public_base()}/s/{token}"})
+        if path == "/api/feedback":
+            try:
+                set_rating(uid, int(body.get("id", 0)), int(body.get("value", 0)))
+            except ValueError as e:
+                return self.reply_json(400, {"error": str(e)})
+            except LookupError as e:
+                return self.reply_json(404, {"error": str(e)})
+            return self.reply_json(200, {"ok": True})
         if path == "/api/support":
             return self.reply_json(200, {"email": SUPPORT_EMAIL, "tg": SUPPORT_TG, "tickets": user_tickets(uid)})
         if path in ("/api/ticket/new", "/api/ticket/reply"):
@@ -991,13 +1134,13 @@ class Handler(BaseHTTPRequestHandler):
         except Exception as e:  # noqa: BLE001
             print("consult error:", e)
             return self.reply_json(502, {"error": "Не удалось получить ответ. Попробуйте позже."})
-        log_reading(uid, rtype, spread_name, (f"[{body['topic']}] " if body.get("topic") and rtype == "reading" else "") + question, res.get("title", ""))
+        log_id = log_reading(uid, rtype, spread_name, (f"[{body['topic']}] " if body.get("topic") and rtype == "reading" else "") + question, res.get("title", ""))
         if res["telegram_message"].strip():
             try:
                 send_html(uid, res["telegram_message"])
             except Exception as e:  # noqa: BLE001
                 print("telegram send error:", e)
-        self.reply_json(200, {**res, "card_readings": res["cards"], "cards": drawn})
+        self.reply_json(200, {**res, "card_readings": res["cards"], "cards": drawn, "log_id": log_id})
 
 
 COMMANDS = [("start", "Главное меню"), ("app", "Открыть таро"), ("tariffs", "Тарифы и цены"), ("support", "Поддержка"),
@@ -1022,6 +1165,7 @@ def main():
     if not BOT_TOKEN:
         raise SystemExit("Не задан BOT_TOKEN в .env")
     threading.Thread(target=set_menu_button, daemon=True).start()
+    threading.Thread(target=bot_username, daemon=True).start()  # имя бота нужно для ссылок «поделиться»
     init_db()
     threading.Thread(target=poll_loop, daemon=True).start()
     print(f"Мини-апп на http://localhost:{PORT}  (WEBAPP_URL={WEBAPP_URL or 'не задан'})")

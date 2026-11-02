@@ -126,7 +126,8 @@ function renderStats() {
   const s = data.stats, box = $('stats'); box.innerHTML = '';
   [['Пользователей', s.users, s.new_today ? '+' + s.new_today + ' сегодня' : ''], ['Активны за 7 дней', s.active_7d, ''],
    ['Раскладов', s.readings, s.readings_today ? '+' + s.readings_today + ' сегодня' : ''], ['Сообщений всего', s.messages, ''],
-   ['Выручка', money(s.paid_total), ''], ['Оплат', s.paid_count, ''], ['Открытых обращений', s.tickets_open, '']].forEach(([l, v, d]) => {
+   ['Выручка', money(s.paid_total), ''], ['Оплат', s.paid_count, ''], ['Открытых обращений', s.tickets_open, ''],
+   ['Оценки ответов', (s.rated_good || 0) + ' 👍 · ' + (s.rated_bad || 0) + ' 👎', '']].forEach(([l, v, d]) => {
     const c = el('div', 'stat'); const b = el('b', '', v); c.appendChild(b);
     const sp = el('span', '', l); if (d) sp.appendChild(el('i', '', d)); c.appendChild(sp); box.appendChild(c);
   });
@@ -158,7 +159,7 @@ function renderReqs() {
   data.requests.forEach(r => {
     const row = el('div', 'row'); row.appendChild(el('div', 'av', (r.first_name || r.username || '?').slice(0, 1).toUpperCase()));
     const m = el('div', 'm');
-    m.appendChild(el('b', '', (KIND[r.kind] || r.kind) + (r.spread ? ' · ' + r.spread : '')));
+    m.appendChild(el('b', '', (KIND[r.kind] || r.kind) + (r.spread ? ' · ' + r.spread : '') + (r.rating > 0 ? ' 👍' : r.rating < 0 ? ' 👎' : '')));
     m.appendChild(el('small', '', (r.question || '').slice(0, 120)));
     row.appendChild(m);
     const t = el('div', 'r'); t.appendChild(el('b', '', r.first_name || (r.username ? '@' + r.username : 'ID ' + r.uid))); t.appendChild(el('div', '', ago(r.ts))); row.appendChild(t);
