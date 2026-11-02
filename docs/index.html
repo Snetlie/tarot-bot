@@ -32,7 +32,7 @@ body::before { content: ""; position: fixed; inset: 0; pointer-events: none; opa
     radial-gradient(1px 1px at 9% 82%, #fff 50%, transparent 51%), radial-gradient(1.4px 1.4px at 58% 90%, #fff 50%, transparent 51%);
   animation: tw 6s ease-in-out infinite alternate; }
 @keyframes tw { from { opacity: .3 } to { opacity: .85 } }
-main { position: relative; max-width: 520px; margin: 0 auto; padding: 0 16px calc(130px + env(safe-area-inset-bottom)); }
+main { position: relative; max-width: 520px; margin: 0 auto; padding: 0 16px calc(160px + env(safe-area-inset-bottom)); }
 .hidden { display: none !important; }
 button { font-family: inherit; }
 
@@ -269,12 +269,60 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
 .sheet-note { min-height: 18px; margin: 4px 0 10px; font-size: 13px; color: var(--rose); }
 .sheet-close { width: 100%; padding: 13px; border: 0; border-radius: 16px; cursor: pointer; color: var(--text); background: var(--glass2); font: 500 15px var(--sans); }
 
+.sheet { max-height: 88vh; overflow-y: auto; }
+.don-note { margin: -2px 0 10px; font-size: 12.5px; color: var(--muted); }
+.donate { display: flex; gap: 8px; margin-bottom: 14px; }
+.don { flex: 1; padding: 12px 6px; border-radius: 14px; cursor: pointer; font: 600 15px var(--sans); color: var(--gold2);
+  background: rgba(230,198,117,.1); border: 1px solid rgba(230,198,117,.4); transition: transform .12s; }
+.don:active { transform: scale(.97); }
+.don:disabled { opacity: .5; }
+.quick-links { display: flex; gap: 8px; margin-top: 10px; }
+.qlink { flex: 1; min-width: 0; padding: 9px 6px; border-radius: 12px; cursor: pointer; font: 500 12.5px var(--sans); text-align: center;
+  color: var(--text); background: var(--glass); border: 1px solid var(--line); white-space: nowrap; }
+.qlink:active { background: var(--glass2); }
+.consent { margin: 8px 4px 0; text-align: center; font-size: 11.5px; line-height: 1.35; color: #8d89a8; }
+.consent a, .legal a { color: var(--gold2); text-decoration: underline; text-underline-offset: 2px; cursor: pointer; }
+.legal { text-align: center; font-size: 12px; color: var(--muted); margin: 0 0 12px; }
+.rules { margin: 4px 0 12px; padding-left: 18px; font-size: 12.5px; line-height: 1.45; color: var(--muted); }
+.rules li { margin-bottom: 4px; }
+.h3 { font: 600 12px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--gold); margin: 16px 0 8px; }
+.sup-contact { font-size: 13.5px; color: var(--muted); margin: 6px 0 14px; }
+.sup-contact a { color: var(--gold2); }
+.sup-form input, .sup-form textarea, .reply input { width: 100%; background: rgba(0,0,0,.25); color: var(--text); border: 1px solid var(--line);
+  border-radius: 14px; padding: 12px 14px; font: 15px/1.4 var(--sans); outline: none; margin-bottom: 8px; }
+.sup-form textarea { height: 96px; resize: none; }
+.sup-send { width: 100%; padding: 13px; border: 0; border-radius: 14px; cursor: pointer; font: 600 15px var(--sans); color: #251b06;
+  background: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.sup-send:disabled { opacity: .4; }
+.tk { border: 1px solid var(--line); border-radius: 16px; margin-bottom: 8px; background: rgba(0,0,0,.2); overflow: hidden; }
+.tk-head { width: 100%; display: flex; justify-content: space-between; align-items: center; gap: 10px; padding: 12px 14px; background: none; border: 0;
+  color: var(--text); text-align: left; cursor: pointer; font: 500 14px var(--sans); }
+.tk-head small { display: block; color: var(--muted); font-size: 12px; }
+.pill { font-size: 11px; padding: 2px 9px; border-radius: 99px; background: rgba(230,198,117,.15); color: var(--gold); white-space: nowrap; }
+.pill.ok { background: rgba(111,227,165,.15); color: #6fe3a5; }
+.pill.off { background: rgba(255,255,255,.08); color: var(--muted); }
+.tk-body { padding: 0 14px 12px; }
+.tm { margin: 6px 0; padding: 9px 12px; border-radius: 14px; font-size: 14px; line-height: 1.45; white-space: pre-wrap; word-break: break-word; }
+.tm.u { background: rgba(139,108,240,.28); margin-left: 18px; }
+.tm.a { background: rgba(230,198,117,.12); margin-right: 18px; }
+.tm small { display: block; color: var(--muted); font-size: 11px; margin-bottom: 2px; }
+.reply { display: flex; gap: 8px; margin-top: 8px; }
+.reply input { margin: 0; }
+.reply button { flex: none; width: 44px; border: 0; border-radius: 12px; cursor: pointer; font-size: 16px; color: #251b06;
+  background: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.reply button:disabled { opacity: .4; }
+
 @media (prefers-reduced-motion: reduce) { * { animation: none !important; transition-duration: .01s !important; } }
 </style>
 </head>
 <body>
 <main>
   <button class="plash" id="planBtn" type="button"><span class="ic" id="plashIc">💳</span><span><b id="plashTitle">Тарифы</b><small id="plashSub">Безлимит и пакеты запросов</small></span><span class="chev">›</span></button>
+  <div class="quick-links">
+    <button class="qlink" id="supBtn" type="button">🛟 Поддержка</button>
+    <button class="qlink" type="button" data-doc="terms">📜 Соглашение</button>
+    <button class="qlink" type="button" data-doc="privacy">🔒 Политика</button>
+  </div>
   <section id="setup">
     <div class="hero">
       <div class="wheel" id="wheel" aria-hidden="true"></div>
@@ -336,11 +384,31 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
   <b class="sheet-title" id="sheetTitle">Тарифы</b>
   <p class="sheet-status" id="sheetStatus"></p>
   <div id="plans"></div>
+  <div class="h3">💛 Поддержать проект</div>
+  <p class="don-note">Добровольное пожертвование: запросов оно не добавляет, это просто спасибо автору.</p>
+  <div class="donate" id="donate"></div>
+  <ul class="rules" id="rules"></ul>
+  <p class="legal">Оплачивая, вы принимаете <a href="#" data-doc="terms">Пользовательское соглашение</a> и <a href="#" data-doc="privacy">Политику конфиденциальности</a></p>
   <p class="sheet-note" id="sheetNote"></p>
   <button class="sheet-close" id="sheetClose" type="button">Закрыть</button>
 </div>
+<div class="sheet hidden" id="supSheet" role="dialog" aria-modal="true" aria-labelledby="supTitle">
+  <div class="grip"></div>
+  <b class="sheet-title" id="supTitle">Поддержка</b>
+  <p class="sup-contact" id="supContact">Опишите вопрос, ответ придёт в чат с ботом.</p>
+  <div class="sup-form">
+    <input id="supSubject" maxlength="100" placeholder="Тема, например: не пришёл ответ">
+    <textarea id="supText" maxlength="2000" placeholder="Опишите вопрос или проблему…"></textarea>
+    <button class="sup-send" id="supSend" type="button">Отправить обращение</button>
+  </div>
+  <p class="sheet-note" id="supNote"></p>
+  <div class="h3">Мои обращения</div>
+  <div id="supList"></div>
+  <button class="sheet-close" id="supClose" type="button" style="margin-top:8px">Закрыть</button>
+</div>
 
-<div class="dock" id="dockSetup"><div><button class="go" id="go" disabled>Разложить карты</button></div></div>
+<div class="dock" id="dockSetup"><div><button class="go" id="go" disabled>Разложить карты</button>
+<p class="consent">Нажимая кнопку, вы принимаете <a href="#" data-doc="terms">Пользовательское соглашение</a> и <a href="#" data-doc="privacy">Политику конфиденциальности</a></p></div></div>
 <div class="dock hidden" id="dockChat"><div class="composer">
   <input id="chat" maxlength="1000" placeholder="Задать уточняющий вопрос…" enterkeyhint="send">
   <button id="send" aria-label="Отправить">➤</button>
@@ -685,12 +753,21 @@ function renderPlans(q) {
     ? 'Безлимит активен до ' + new Date(q.unlimited_until * 1000).toLocaleDateString('ru-RU')
     : 'Бесплатных запросов: ' + q.free + ' · купленных: ' + q.credits;
   $('plans').innerHTML = '';
+  $('rules').innerHTML = '';
+  (q.rules || []).forEach(r => $('rules').appendChild(node('li', '', r)));
+  $('donate').innerHTML = '';
+  (q.donations || []).forEach(d => {
+    const b = document.createElement('button');
+    b.type = 'button'; b.className = 'don'; b.textContent = '💛 ' + d.price + ' ₽';
+    b.onclick = () => buyPlan(d.id);
+    $('donate').appendChild(b);
+  });
   q.plans.forEach(p => {
     const b = document.createElement('button');
     b.type = 'button'; b.className = 'plan' + (p.id === 'unlimited' ? ' best' : ''); b.dataset.id = p.id;
     b.innerHTML = '<span><b></b><small></small></span><span class="price"></span>';
     b.querySelector('b').textContent = p.title;
-    b.querySelector('small').textContent = p.description;
+    b.querySelector('small').textContent = p.detail || p.description;
     b.querySelector('.price').textContent = p.price + ' ₽';
     b.onclick = () => buyPlan(p.id);
     $('plans').appendChild(b);
@@ -701,12 +778,12 @@ async function loadQuota() {
   catch (e) { $('sheetNote').textContent = e.message; }
 }
 function openPlans(note) {
-  $('sheetBg').classList.remove('hidden'); $('sheet').classList.remove('hidden');
+  $('sheetBg').classList.remove('hidden'); $('sheet').classList.remove('hidden'); $('supSheet').classList.add('hidden');
   $('sheetNote').textContent = note || '';
   loadQuota();
 }
-function closePlans() { $('sheetBg').classList.add('hidden'); $('sheet').classList.add('hidden'); }
-function setPlansBusy(v) { document.querySelectorAll('.plan').forEach(x => x.disabled = v); }
+function closePlans() { $('sheetBg').classList.add('hidden'); $('sheet').classList.add('hidden'); $('supSheet').classList.add('hidden'); }
+function setPlansBusy(v) { document.querySelectorAll('.plan, .don').forEach(x => x.disabled = v); }
 async function buyPlan(id) {
   setPlansBusy(true); $('sheetNote').textContent = '';
   try {
@@ -716,6 +793,7 @@ async function buyPlan(id) {
       setPlansBusy(false);
       if (status === 'paid') {
         buzz(); loadQuota();
+        if (id.startsWith('donate')) $('sheetNote').textContent = 'Спасибо за поддержку проекта! 💛';
         setTimeout(loadQuota, 2500); // бот получает подтверждение оплаты чуть позже
       } else if (status === 'failed') {
         $('sheetNote').textContent = 'Оплата не прошла. Попробуйте ещё раз.';
@@ -730,6 +808,86 @@ $('planBtn').onclick = () => openPlans();
 $('sheetBg').onclick = closePlans;
 $('sheetClose').onclick = closePlans;
 loadQuota();
+
+/* юридические документы открываются в браузере: они лежат на сервере бота */
+function openDoc(name) {
+  const url = (window.API_BASE || location.origin) + '/' + name;
+  try { tg.openLink(url); } catch (e) { window.open(url, '_blank'); }
+}
+document.querySelectorAll('[data-doc]').forEach(x => x.onclick = e => { e.preventDefault(); openDoc(x.dataset.doc); });
+
+/* поддержка */
+const fmtT = ts => new Date(ts * 1000).toLocaleString('ru-RU', {day: '2-digit', month: '2-digit', hour: '2-digit', minute: '2-digit'});
+const TICKET_STATUS = {open: ['ждёт ответа', ''], answered: ['есть ответ', 'ok'], closed: ['закрыто', 'off']};
+let openTicketId = null;
+function openSupport(note) {
+  $('sheetBg').classList.remove('hidden'); $('sheet').classList.add('hidden'); $('supSheet').classList.remove('hidden');
+  $('supNote').style.color = ''; $('supNote').textContent = note || '';
+  loadSupport();
+}
+async function loadSupport() {
+  try {
+    const d = await api('/api/support', {});
+    const c = $('supContact'); c.textContent = 'Опишите вопрос, ответ придёт в чат с ботом.';
+    const links = [];
+    if (d.email) { const a = document.createElement('a'); a.href = 'mailto:' + d.email; a.textContent = d.email; links.push(a); }
+    if (d.tg) { const a = document.createElement('a'); a.href = '#'; a.textContent = '@' + d.tg; a.onclick = e => { e.preventDefault(); tg.openTelegramLink('https://t.me/' + d.tg); }; links.push(a); }
+    if (links.length) {
+      c.appendChild(document.createTextNode(' Контакты: '));
+      links.forEach((a, i) => { if (i) c.appendChild(document.createTextNode(', ')); c.appendChild(a); });
+    }
+    renderTickets(d.tickets);
+  } catch (e) { $('supNote').textContent = e.message; }
+}
+function renderTickets(list) {
+  const box = $('supList'); box.innerHTML = '';
+  if (!list.length) { box.appendChild(node('p', 'sup-contact', 'Обращений пока нет.')); return; }
+  list.forEach(t => box.appendChild(ticketNode(t)));
+}
+function ticketNode(t) {
+  const wrap = node('div', 'tk'), head = document.createElement('button');
+  head.type = 'button'; head.className = 'tk-head';
+  const left = document.createElement('span'), b = document.createElement('b'), s = document.createElement('small');
+  b.textContent = '№' + t.id + ' · ' + t.subject; s.textContent = fmtT(t.updated);
+  left.appendChild(b); left.appendChild(s);
+  const st = TICKET_STATUS[t.status] || [t.status, 'off'];
+  head.appendChild(left); head.appendChild(node('span', 'pill ' + st[1], st[0]));
+  wrap.appendChild(head);
+  const body = node('div', 'tk-body' + (openTicketId === t.id ? '' : ' hidden'));
+  t.messages.forEach(m => {
+    const x = node('div', 'tm ' + (m.author === 'user' ? 'u' : 'a')), sm = document.createElement('small');
+    sm.textContent = (m.author === 'user' ? 'Вы' : 'Поддержка') + ' · ' + fmtT(m.ts);
+    x.appendChild(sm); x.appendChild(document.createTextNode(m.text)); body.appendChild(x);
+  });
+  const rep = node('div', 'reply'), inp = document.createElement('input'), go = document.createElement('button');
+  inp.maxLength = 2000; inp.placeholder = 'Ответить…';
+  go.type = 'button'; go.textContent = '➤'; go.setAttribute('aria-label', 'Отправить');
+  go.onclick = async () => {
+    const text = inp.value.trim(); if (!text) return;
+    go.disabled = true;
+    try { const r = await api('/api/ticket/reply', {id: t.id, text}); openTicketId = t.id; $('supNote').textContent = ''; renderTickets(r.tickets); }
+    catch (e) { $('supNote').style.color = ''; $('supNote').textContent = e.message; go.disabled = false; }
+  };
+  rep.appendChild(inp); rep.appendChild(go); body.appendChild(rep); wrap.appendChild(body);
+  head.onclick = () => { body.classList.toggle('hidden'); openTicketId = body.classList.contains('hidden') ? null : t.id; };
+  return wrap;
+}
+$('supSend').onclick = async () => {
+  const subject = $('supSubject').value.trim(), text = $('supText').value.trim();
+  if (!text) { $('supNote').style.color = ''; $('supNote').textContent = 'Опишите вопрос.'; return; }
+  $('supSend').disabled = true; $('supNote').textContent = '';
+  try {
+    const r = await api('/api/ticket/new', {subject, text});
+    $('supSubject').value = ''; $('supText').value = ''; openTicketId = r.id; renderTickets(r.tickets);
+    $('supNote').style.color = 'var(--gold2)'; $('supNote').textContent = 'Обращение №' + r.id + ' отправлено. Ответ придёт в чат с ботом.';
+    buzz();
+  } catch (e) { $('supNote').style.color = ''; $('supNote').textContent = e.message; }
+  $('supSend').disabled = false;
+};
+$('supBtn').onclick = () => openSupport();
+$('supClose').onclick = closePlans;
+const startScreen = new URLSearchParams(location.search).get('screen');
+if (startScreen === 'support') openSupport(); else if (startScreen === 'tariffs') openPlans();
 function select(id, quiet) {
   const s = spreadList.find(x => x.id === id); if (!s) return;
   spread = id; spreadName = s.name; spreadCount = s.count;

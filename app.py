@@ -1,6 +1,7 @@
 """Telegram-бот «Ответы на ваши вопросы таро» + мини-апп. Только стандартная библиотека."""
 import hashlib
 import hmac
+import html as htmllib
 import json
 import os
 import re
@@ -54,6 +55,27 @@ PLANS = {
     "unlimited": {"button": "Безлимит на 30 дней — 499 ₽", "title": "Безлимит на 30 дней",
                   "description": "Безлимитные запросы к таро на 30 дней", "price": 499, "requests": 0, "days": 30},
 }
+RULES = [
+    "Запрос — это один расклад, один уточняющий вопрос или один глубокий разбор.",
+    "Сначала тратятся бесплатные запросы, потом купленные.",
+    "Пакеты запросов не сгорают и хранятся на вашем аккаунте.",
+    f"Безлимит действует {PLANS['unlimited']['days']} дней со дня оплаты. Автопродления нет: деньги списываются только когда вы сами оплачиваете.",
+    "Оплата разовая, в рублях, через Telegram. Условия возврата — в Пользовательском соглашении.",
+]
+# добровольные пожертвования: фиксированные суммы, запросов не дают
+DONATIONS = {
+    "donate50": {"button": "💛 50 ₽", "title": "Поддержка проекта", "description": "Добровольное пожертвование на развитие проекта", "price": 50},
+    "donate150": {"button": "💛 150 ₽", "title": "Поддержка проекта", "description": "Добровольное пожертвование на развитие проекта", "price": 150},
+    "donate300": {"button": "💛 300 ₽", "title": "Поддержка проекта", "description": "Добровольное пожертвование на развитие проекта", "price": 300},
+}
+ALL_OFFERS = {**PLANS, **DONATIONS}
+# данные владельца для юридических страниц и поддержки; можно переопределить в /etc/tarot.env
+OPERATOR_NAME = (os.environ.get("OPERATOR_NAME") or "ИП Родионов Даниил Вадимович").strip()
+SUPPORT_EMAIL = (os.environ.get("SUPPORT_EMAIL") or "drodii198@gmail.com").strip()
+SUPPORT_TG = (os.environ.get("SUPPORT_TG") or "Snetlie").strip().lstrip("@")
+TICKET_DAILY_LIMIT = 5  # новых обращений от одного человека в сутки
+TICKET_MESSAGE_LIMIT = 50  # сообщений в одном обращении
+
 
 class QuotaExceeded(Exception):
     pass
@@ -93,6 +115,12 @@ def init_db():
             CREATE TABLE IF NOT EXISTS meta (key TEXT PRIMARY KEY, value TEXT);
             CREATE INDEX IF NOT EXISTS idx_readings_uid ON readings(uid, ts);
             CREATE INDEX IF NOT EXISTS idx_payments_uid ON payments(uid, ts);
+            CREATE TABLE IF NOT EXISTS tickets (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER, ts INTEGER, updated INTEGER, subject TEXT, status TEXT);
+            CREATE TABLE IF NOT EXISTS ticket_messages (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, ticket_id INTEGER, ts INTEGER, author TEXT, text TEXT);
+            CREATE INDEX IF NOT EXISTS idx_tickets_uid ON tickets(uid, updated);
+            CREATE INDEX IF NOT EXISTS idx_ticket_messages ON ticket_messages(ticket_id, id);
         """)
         # колонки тарифов появились позже, добавляем их в уже существующую базу
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
@@ -149,7 +177,7 @@ def spend_request(uid):
 
 
 def grant_plan(uid, plan_id, charge_id, total_kop):
-    plan = PLANS[plan_id]
+    plan = ALL_OFFERS[plan_id]
     if total_kop != plan["price"] * 100:
         return False
     now = int(time.time())
@@ -159,12 +187,165 @@ def grant_plan(uid, plan_id, charge_id, total_kop):
             return False
         c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
                   (uid, now, plan["price"], "RUB", "paid", "telegram", f"{plan_id} {charge_id}"))
-        if plan["days"]:
+        if plan_id in DONATIONS:
+            pass  # пожертвование: запросы не начисляются
+        elif plan["days"]:
             c.execute("UPDATE users SET unlimited_until = MAX(unlimited_until, ?) + ? WHERE id=?",
                       (now, plan["days"] * 86400, uid))
         else:
             c.execute("UPDATE users SET credits = credits + ? WHERE id=?", (plan["requests"], uid))
     return True
+
+
+# ---------- Тарифы: тексты и юридические страницы ----------
+
+def plural(n, one, few, many):
+    n = abs(int(n))
+    if 11 <= n % 100 <= 14:
+        return many
+    return {1: one, 2: few, 3: few, 4: few}.get(n % 10, many)
+
+
+def rub(x):
+    s = f"{x:.1f}".replace(".", ",")
+    return (s[:-2] if s.endswith(",0") else s) + " ₽"
+
+
+def plan_detail(p):
+    if p["days"]:
+        return f"{p['days']} дней без ограничения числа запросов, без автопродления"
+    return f"{rub(p['price'] / p['requests'])} за запрос, не сгорают"
+
+
+def tariffs_text():
+    lines = ["💳 Тарифы и цены", "",
+             f"🎁 Бесплатно: {FREE_REQUESTS} {plural(FREE_REQUESTS, 'запрос', 'запроса', 'запросов')} (один раз на аккаунт)"]
+    lines += [f"• {p['title']} — {p['price']} ₽ ({plan_detail(p)})" for p in PLANS.values()]
+    lines += ["", "💛 Поддержать проект: кнопки внизу. Это добровольное пожертвование, оно не добавляет запросов."]
+    return "\n".join(lines + [""] + ["· " + r for r in RULES])
+
+
+def contacts_html():
+    parts = []
+    if SUPPORT_EMAIL:
+        e = htmllib.escape(SUPPORT_EMAIL)
+        parts.append(f'e-mail: <a href="mailto:{e}">{e}</a>')
+    if SUPPORT_TG:
+        t = htmllib.escape(SUPPORT_TG)
+        parts.append(f'Telegram: <a href="https://t.me/{t}">@{t}</a>')
+    parts.append("раздел «Поддержка» в боте и мини-приложении")
+    return "; ".join(parts)
+
+
+def tariffs_html():
+    items = "".join(f"<li><b>{htmllib.escape(p['title'])}</b> — {p['price']} ₽ ({htmllib.escape(plan_detail(p))})</li>"
+                    for p in PLANS.values())
+    return f"<ul>{items}</ul>"
+
+
+def legal_html(name):
+    page = (ROOT / "docs" / f"{name}.html").read_text(encoding="utf-8")
+    operator = htmllib.escape(OPERATOR_NAME) if OPERATOR_NAME else "владелец сервиса (контакты указаны ниже)"
+    return (page.replace("{{OPERATOR}}", operator).replace("{{CONTACTS}}", contacts_html())
+            .replace("{{TARIFFS}}", tariffs_html()).replace("{{FREE}}", str(FREE_REQUESTS)))
+
+
+# ---------- Обращения в поддержку ----------
+
+def notify_admin(text):
+    admin = get_admin_id()
+    if not admin:
+        return
+    kwargs = {"reply_markup": {"inline_keyboard": [[{"text": "🛠 Открыть админ-панель", "web_app": {"url": WEBAPP_URL + "/admin.html"}}]]}} if WEBAPP_URL else {}
+
+    def send():
+        try:
+            tg("sendMessage", chat_id=admin, text=text[:3500], **kwargs)
+        except Exception as e:  # noqa: BLE001
+            print("admin notify error:", e)
+    threading.Thread(target=send, daemon=True).start()
+
+
+def create_ticket(uid, subject, text):
+    subject, text = str(subject).strip()[:100] or "Без темы", str(text).strip()[:2000]
+    if not text:
+        raise ValueError("Опишите вопрос.")
+    now = int(time.time())
+    with closing(db()) as c, c:
+        if c.execute("SELECT COUNT(*) FROM tickets WHERE uid=? AND ts>=?", (uid, now - 86400)).fetchone()[0] >= TICKET_DAILY_LIMIT:
+            raise ValueError("Слишком много обращений за сутки. Дождитесь ответа поддержки.")
+        tid = c.execute("INSERT INTO tickets (uid, ts, updated, subject, status) VALUES (?,?,?,?,'open')",
+                        (uid, now, now, subject)).lastrowid
+        c.execute("INSERT INTO ticket_messages (ticket_id, ts, author, text) VALUES (?,?,?,?)", (tid, now, "user", text))
+    notify_admin(f"🛟 Новое обращение №{tid}\n{subject}\n\n{text[:500]}")
+    return tid
+
+
+def reply_ticket(tid, author, text, uid=None):
+    text = str(text).strip()[:2000]
+    if not text:
+        raise ValueError("Напишите сообщение.")
+    now = int(time.time())
+    with closing(db()) as c, c:
+        t = c.execute("SELECT * FROM tickets WHERE id=?", (tid,)).fetchone()
+        if t is None or (uid is not None and t["uid"] != uid):
+            raise LookupError("Обращение не найдено.")
+        if c.execute("SELECT COUNT(*) FROM ticket_messages WHERE ticket_id=?", (tid,)).fetchone()[0] >= TICKET_MESSAGE_LIMIT:
+            raise ValueError("В обращении слишком много сообщений. Создайте новое.")
+        if author == "user" and c.execute(
+                """SELECT COUNT(*) FROM ticket_messages m JOIN tickets t ON t.id=m.ticket_id
+                   WHERE t.uid=? AND m.author='user' AND m.ts>=?""", (t["uid"], now - 86400)).fetchone()[0] >= 30:
+            raise ValueError("Слишком много сообщений за сутки. Попробуйте позже.")
+        c.execute("INSERT INTO ticket_messages (ticket_id, ts, author, text) VALUES (?,?,?,?)", (tid, now, author, text))
+        c.execute("UPDATE tickets SET updated=?, status=? WHERE id=?", (now, "open" if author == "user" else "answered", tid))
+    return dict(t), text
+
+
+def ticket_user_reply(uid, tid, text):
+    _, text = reply_ticket(tid, "user", text, uid)
+    notify_admin(f"💬 Новое сообщение в обращении №{tid}\n\n{text[:500]}")
+
+
+def ticket_admin_reply(tid, text):
+    """Сохраняет ответ и отправляет его пользователю в чат. Возвращает True, если Telegram доставил сообщение."""
+    t, text = reply_ticket(tid, "admin", text)
+    try:
+        tg("sendMessage", chat_id=t["uid"], text=f"💬 Ответ поддержки по обращению №{tid}:\n\n{text}\n\nПродолжить переписку можно в мини-приложении, раздел «Поддержка».")
+        return True
+    except Exception as e:  # noqa: BLE001
+        print("ticket reply send error:", e)
+        return False
+
+
+def ticket_close(tid):
+    with closing(db()) as c, c:
+        t = c.execute("SELECT * FROM tickets WHERE id=?", (tid,)).fetchone()
+        if t is None:
+            raise LookupError("Обращение не найдено.")
+        c.execute("UPDATE tickets SET status='closed', updated=? WHERE id=?", (int(time.time()), tid))
+    try:
+        tg("sendMessage", chat_id=t["uid"], text=f"Обращение №{tid} закрыто. Если вопрос остался, создайте новое: /ticket")
+    except Exception as e:  # noqa: BLE001
+        print("ticket close send error:", e)
+
+
+def user_tickets(uid):
+    out = []
+    with closing(db()) as c:
+        for t in c.execute("SELECT * FROM tickets WHERE uid=? ORDER BY updated DESC LIMIT 20", (uid,)).fetchall():
+            msgs = [dict(m) for m in c.execute("SELECT ts, author, text FROM ticket_messages WHERE ticket_id=? ORDER BY id", (t["id"],))]
+            out.append({**dict(t), "messages": msgs})
+    return out
+
+
+def admin_ticket(tid):
+    with closing(db()) as c:
+        t = c.execute("""SELECT t.*, u.username, u.first_name, u.last_name FROM tickets t
+                         LEFT JOIN users u ON u.id = t.uid WHERE t.id=?""", (tid,)).fetchone()
+        if t is None:
+            return None
+        msgs = [dict(m) for m in c.execute("SELECT ts, author, text FROM ticket_messages WHERE ticket_id=? ORDER BY id", (tid,))]
+    return {"ticket": dict(t), "messages": msgs}
 
 
 def get_admin_id():
@@ -198,6 +379,7 @@ def admin_overview():
             "messages": one("SELECT COUNT(*) FROM readings"),
             "paid_total": one("SELECT COALESCE(SUM(amount),0) FROM payments WHERE status='paid'"),
             "paid_count": one("SELECT COUNT(*) FROM payments WHERE status='paid'"),
+            "tickets_open": one("SELECT COUNT(*) FROM tickets WHERE status='open'"),
         }
         series = {}
         queries = (("users", "SELECT date(first_seen,'unixepoch','localtime') d, COUNT(*) n FROM users WHERE first_seen >= ? GROUP BY d"),
@@ -215,7 +397,13 @@ def admin_overview():
         requests = [dict(r) for r in c.execute(
             """SELECT r.ts, r.kind, r.spread, r.question, r.uid, u.username, u.first_name, u.last_name
                FROM readings r LEFT JOIN users u ON u.id = r.uid ORDER BY r.ts DESC LIMIT 300""")]
-    return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests}
+        tickets = [dict(r) for r in c.execute(
+            """SELECT t.id, t.uid, t.ts, t.updated, t.subject, t.status, u.username, u.first_name, u.last_name,
+                      (SELECT text FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_text,
+                      (SELECT author FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_author
+               FROM tickets t LEFT JOIN users u ON u.id = t.uid
+               ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'answered' THEN 1 ELSE 2 END, t.updated DESC LIMIT 200""")]
+    return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests, "tickets": tickets}
 
 
 def admin_user(uid):
@@ -266,28 +454,89 @@ def admin_grant(chat_id, args):
     tg("sendMessage", chat_id=chat_id, text="Готово." if days > 0 else "Безлимит снят.")
 
 
-def start_markup():
+HELP_TEXT = """Все команды:
+
+🔮 /app — открыть таро
+💳 /tariffs — тарифы и цены
+🛟 /support — поддержка и контакты
+✉ /ticket — создать обращение, например: /ticket не пришёл ответ
+🔒 /privacy — политика конфиденциальности
+📜 /terms — пользовательское соглашение
+📋 /help — это меню
+
+Можно просто написать вопрос в чат, я отвечу по последнему раскладу.
+Пользуясь ботом, вы принимаете Пользовательское соглашение и Политику конфиденциальности."""
+
+
+def legal_buttons():
+    if not WEBAPP_URL:
+        return []
+    return [[{"text": "🔒 Политика", "url": WEBAPP_URL + "/privacy"}, {"text": "📜 Соглашение", "url": WEBAPP_URL + "/terms"}]]
+
+
+def menu_markup():
     rows = [[{"text": "🔮 Открыть таро", "web_app": {"url": WEBAPP_URL}}]] if WEBAPP_URL else []
-    rows.append([{"text": "💳 Тарифы", "callback_data": "tariffs"}])
-    return {"inline_keyboard": rows}
+    rows.append([{"text": "💳 Тарифы и цены", "callback_data": "tariffs"}, {"text": "🛟 Поддержка", "callback_data": "support"}])
+    return {"inline_keyboard": rows + legal_buttons()}
+
+
+def send_menu(chat_id, intro=""):
+    text = (intro + "\n\n" if intro else "") + HELP_TEXT
+    if not WEBAPP_URL:
+        text += "\n\n(Адрес мини-аппа ещё не настроен.)"
+    tg("sendMessage", chat_id=chat_id, text=text, reply_markup=menu_markup())
+
+
+def send_app(chat_id):
+    if not WEBAPP_URL:
+        return tg("sendMessage", chat_id=chat_id, text="Адрес мини-аппа ещё не настроен.")
+    tg("sendMessage", chat_id=chat_id, text="Нажмите кнопку, чтобы открыть таро.", reply_markup=webapp_markup())
+
+
+def send_support(chat_id):
+    lines = ["🛟 Поддержка", "", "Опишите вопрос или проблему, ответ придёт в этот чат."]
+    contacts = ([f"E-mail: {SUPPORT_EMAIL}"] if SUPPORT_EMAIL else []) + ([f"Telegram: @{SUPPORT_TG}"] if SUPPORT_TG else [])
+    if contacts:
+        lines += [""] + contacts
+    lines += ["", "Создать обращение можно в приложении (кнопка ниже) или командой, например:", "/ticket не пришёл ответ на расклад"]
+    kwargs = {"reply_markup": {"inline_keyboard": [[{"text": "✉ Создать обращение", "web_app": {"url": WEBAPP_URL + "/?screen=support"}}]]}} if WEBAPP_URL else {}
+    tg("sendMessage", chat_id=chat_id, text="\n".join(lines), **kwargs)
+
+
+def bot_ticket(chat_id, uid, text):
+    if not text:
+        return tg("sendMessage", chat_id=chat_id, text="Опишите вопрос после команды, например:\n/ticket не пришёл ответ на расклад")
+    try:
+        tid = create_ticket(uid, text[:60], text)
+    except ValueError as e:
+        return tg("sendMessage", chat_id=chat_id, text=str(e))
+    tg("sendMessage", chat_id=chat_id, text=f"Обращение №{tid} принято. Ответ придёт в этот чат.")
+
+
+def send_doc(chat_id, name):
+    title = {"privacy": "🔒 Политика конфиденциальности", "terms": "📜 Пользовательское соглашение"}[name]
+    if not WEBAPP_URL:
+        return tg("sendMessage", chat_id=chat_id, text="Документ пока недоступен.")
+    tg("sendMessage", chat_id=chat_id, text=title, reply_markup={"inline_keyboard": [[{"text": "Открыть", "url": f"{WEBAPP_URL}/{name}"}]]})
 
 
 def send_tariffs(chat_id, uid, intro=""):
     q = quota(uid)
     if q["unlimited_until"] > time.time():
-        status = "Безлимит активен до " + time.strftime("%d.%m.%Y", time.localtime(q["unlimited_until"]))
+        status = "безлимит активен до " + time.strftime("%d.%m.%Y", time.localtime(q["unlimited_until"]))
     else:
-        status = f"Бесплатных запросов осталось: {q['free']}. Купленных: {q['credits']}."
-    text = "\n".join(p for p in (intro, status, "Выберите тариф:") if p)
-    tg("sendMessage", chat_id=chat_id, text=text, reply_markup={"inline_keyboard": [
-        [{"text": p["button"], "callback_data": "buy:" + k}] for k, p in PLANS.items()]})
+        status = f"бесплатных осталось {q['free']}, купленных {q['credits']}"
+    text = "\n".join(([intro, ""] if intro else []) + [tariffs_text(), "", "Ваш статус: " + status, "", "Выберите тариф:"])
+    buy = [[{"text": p["button"], "callback_data": "buy:" + k}] for k, p in PLANS.items()]
+    donate = [[{"text": p["button"], "callback_data": "buy:" + k} for k, p in DONATIONS.items()]]
+    tg("sendMessage", chat_id=chat_id, text=text, reply_markup={"inline_keyboard": buy + donate + legal_buttons()})
 
 
 def invoice_fields(plan_id):
     token = os.environ.get("PAYMENT_PROVIDER_TOKEN", "")
     if not token:
         raise ValueError("Оплата скоро появится. Пока тарифы можно только посмотреть.")
-    plan = PLANS[plan_id]
+    plan = ALL_OFFERS[plan_id]
     return {"title": plan["title"], "description": plan["description"], "payload": plan_id,
             "provider_token": token, "currency": "RUB", "prices": [{"label": plan["title"], "amount": plan["price"] * 100}]}
 
@@ -300,8 +549,10 @@ def send_invoice(chat_id, plan_id):
 
 
 def quota_info(uid):
-    return {**quota(uid), "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"]}
-                                    for k, p in PLANS.items()]}
+    return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES,
+            "donations": [{"id": k, "price": p["price"]} for k, p in DONATIONS.items()],
+            "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"],
+                       "detail": plan_detail(p)} for k, p in PLANS.items()]}
 
 
 def handle_callback(cq):
@@ -309,20 +560,26 @@ def handle_callback(cq):
     chat_id, uid, data = cq["message"]["chat"]["id"], cq["from"]["id"], cq.get("data", "")
     if data == "tariffs":
         send_tariffs(chat_id, uid)
-    elif data.startswith("buy:") and data[4:] in PLANS:
+    elif data == "support":
+        send_support(chat_id)
+    elif data.startswith("buy:") and data[4:] in ALL_OFFERS:
         send_invoice(chat_id, data[4:])
 
 
 def handle_payment(chat_id, uid, pay):
     plan_id = pay.get("invoice_payload", "")
-    if plan_id in PLANS and grant_plan(uid, plan_id, pay["telegram_payment_charge_id"], pay["total_amount"]):
+    if plan_id not in ALL_OFFERS or not grant_plan(uid, plan_id, pay["telegram_payment_charge_id"], pay["total_amount"]):
+        return
+    if plan_id in DONATIONS:
+        tg("sendMessage", chat_id=chat_id, text="Спасибо за поддержку проекта! 💛")
+    else:
         send_tariffs(chat_id, uid, f"Оплата прошла: «{PLANS[plan_id]['title']}» подключён. Спасибо!")
 
 
 def handle_update(upd):
     if "pre_checkout_query" in upd:  # Telegram спрашивает перед списанием денег
         q = upd["pre_checkout_query"]
-        tg("answerPreCheckoutQuery", pre_checkout_query_id=q["id"], ok=q["invoice_payload"] in PLANS)
+        tg("answerPreCheckoutQuery", pre_checkout_query_id=q["id"], ok=q["invoice_payload"] in ALL_OFFERS)
         return
     if "callback_query" in upd:
         return handle_callback(upd["callback_query"])
@@ -350,13 +607,21 @@ def handle_update(upd):
         if uid == get_admin_id():  # чужим не отвечаем вообще
             admin_grant(chat_id, parts[1:])
         return
-    if text.startswith("/start"):
-        hello ="Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос."
-        note = "" if WEBAPP_URL else "\n\n(Адрес мини-аппа ещё не настроен.)"
-        tg("sendMessage", chat_id=chat_id, text=hello + note, reply_markup=start_markup())
-        return
-    if text.startswith("/tariffs") or text.startswith("/buy"):
+    cmd = parts[0].split("@")[0].lower() if parts else ""
+    if cmd == "/start":
+        return send_menu(chat_id, "Добро пожаловать в «Ответы на ваши вопросы таро». Откройте приложение, выберите расклад и задайте вопрос.")
+    if cmd in ("/menu", "/help"):
+        return send_menu(chat_id)
+    if cmd == "/app":
+        return send_app(chat_id)
+    if cmd in ("/tariffs", "/buy"):
         return send_tariffs(chat_id, uid)
+    if cmd == "/support":
+        return send_support(chat_id)
+    if cmd == "/ticket":
+        return bot_ticket(chat_id, uid, text[len(parts[0]):].strip())
+    if cmd in ("/privacy", "/terms"):
+        return send_doc(chat_id, cmd[1:])
     if text.startswith("/"):
         return
     # обычное сообщение в чате: разговор без раскладки
@@ -623,6 +888,14 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if path in ("/privacy", "/privacy.html", "/terms", "/terms.html"):
+            body = legal_html(path.strip("/").split(".")[0]).encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path in ("/", "/index.html", "/admin", "/admin.html"):
             body = (ROOT / "docs" / ("admin.html" if path in ("/admin", "/admin.html") else "index.html")).read_bytes()
             self.send_response(200)
@@ -650,18 +923,45 @@ class Handler(BaseHTTPRequestHandler):
                 return self.reply_json(200, admin_overview())
             if path == "/api/admin/user":
                 return self.reply_json(200, admin_user(int(body.get("id", 0))))
+            if path == "/api/admin/ticket":
+                d = admin_ticket(int(body.get("id", 0)))
+                return self.reply_json(200 if d else 404, d or {"error": "Обращение не найдено."})
+            if path in ("/api/admin/ticket/reply", "/api/admin/ticket/close"):
+                try:
+                    tid, delivered = int(body.get("id", 0)), True
+                    if path.endswith("reply"):
+                        delivered = ticket_admin_reply(tid, body.get("text", ""))
+                    else:
+                        ticket_close(tid)
+                except (ValueError, LookupError) as e:
+                    return self.reply_json(400, {"error": str(e)})
+                return self.reply_json(200, {"ok": True, "delivered": delivered})
             return self.send_error(404)
         touch_user(user, body.get("birth_date"))
         if path == "/api/quota":
             return self.reply_json(200, quota_info(uid))
         if path == "/api/invoice":
-            if body.get("plan") not in PLANS:
+            if body.get("plan") not in ALL_OFFERS:
                 return self.reply_json(400, {"error": "Неизвестный тариф."})
             try:
                 link = tg("createInvoiceLink", **invoice_fields(body["plan"]))["result"]
             except ValueError as e:
                 return self.reply_json(400, {"error": str(e)})
             return self.reply_json(200, {"url": link})
+        if path == "/api/support":
+            return self.reply_json(200, {"email": SUPPORT_EMAIL, "tg": SUPPORT_TG, "tickets": user_tickets(uid)})
+        if path in ("/api/ticket/new", "/api/ticket/reply"):
+            try:
+                if path == "/api/ticket/new":
+                    tid = create_ticket(uid, body.get("subject", ""), body.get("text", ""))
+                else:
+                    tid = int(body.get("id", 0))
+                    ticket_user_reply(uid, tid, body.get("text", ""))
+            except ValueError as e:
+                return self.reply_json(400, {"error": str(e)})
+            except LookupError as e:
+                return self.reply_json(404, {"error": str(e)})
+            return self.reply_json(200, {"id": tid, "tickets": user_tickets(uid)})
         question = str(body.get("question", "")).strip()[:1000]
         if not question and path != "/api/deepdive":
             return self.reply_json(400, {"error": "Напишите вопрос."})
@@ -700,12 +1000,18 @@ class Handler(BaseHTTPRequestHandler):
         self.reply_json(200, {**res, "card_readings": res["cards"], "cards": drawn})
 
 
+COMMANDS = [("start", "Главное меню"), ("app", "Открыть таро"), ("tariffs", "Тарифы и цены"), ("support", "Поддержка"),
+            ("ticket", "Создать обращение"), ("privacy", "Политика конфиденциальности"),
+            ("terms", "Пользовательское соглашение"), ("help", "Все команды")]
+
+
 def set_menu_button():
-    """Связь с Telegram бывает нестабильной, поэтому пробуем несколько раз."""
+    """Список команд бота и кнопка меню. Связь с Telegram бывает нестабильной, поэтому пробуем несколько раз."""
     for attempt in range(1, 11):
         try:
-            tg("setChatMenuButton", menu_button={"type": "web_app", "text": "Таро", "web_app": {"url": WEBAPP_URL}})
-            print("Кнопка меню обновлена")
+            tg("setMyCommands", commands=[{"command": c, "description": d} for c, d in COMMANDS])
+            tg("setChatMenuButton", menu_button={"type": "commands"})  # кнопка «Меню» показывает список команд
+            print("Команды и кнопка меню обновлены")
             return
         except Exception as e:  # noqa: BLE001
             print(f"menu button error (попытка {attempt}):", e)
@@ -715,8 +1021,7 @@ def set_menu_button():
 def main():
     if not BOT_TOKEN:
         raise SystemExit("Не задан BOT_TOKEN в .env")
-    if WEBAPP_URL:
-        threading.Thread(target=set_menu_button, daemon=True).start()
+    threading.Thread(target=set_menu_button, daemon=True).start()
     init_db()
     threading.Thread(target=poll_loop, daemon=True).start()
     print(f"Мини-апп на http://localhost:{PORT}  (WEBAPP_URL={WEBAPP_URL or 'не задан'})")

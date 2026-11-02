@@ -62,6 +62,11 @@ input[type=search] { width:100%; background:rgba(0,0,0,.25); border:1px solid va
 .rd { padding:10px 0; border-top:1px solid var(--line); }
 .rd small { color:var(--muted); display:block; }
 .lock { text-align:center; padding: 90px 20px; color: var(--muted); }
+textarea.ta { width:100%; height:92px; margin-top:12px; background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:14px; padding:12px 14px; color:var(--text); font:16px var(--sans); outline:none; resize:none; }
+.btn { width:100%; padding:13px; margin-top:8px; border:0; border-radius:14px; cursor:pointer; font:600 15px var(--sans); color:#251b06; background:linear-gradient(135deg,var(--gold2),var(--gold)); }
+.btn.sec { background:var(--glass2); color:var(--text); font-weight:500; }
+.btn:disabled { opacity:.4; }
+.tab b { color: var(--rose); font-weight:600; }
 </style>
 </head>
 <body>
@@ -81,6 +86,7 @@ input[type=search] { width:100%; background:rgba(0,0,0,.25); border:1px solid va
     <div class="tabs">
       <button class="tab on" data-t="users">Пользователи</button>
       <button class="tab" data-t="req">Запросы</button>
+      <button class="tab" data-t="tk">Обращения <b id="tkBadge"></b></button>
       <button class="tab" data-t="pay">Оплаты</button>
     </div>
     <section id="tUsers">
@@ -88,6 +94,7 @@ input[type=search] { width:100%; background:rgba(0,0,0,.25); border:1px solid va
       <div id="users"></div>
     </section>
     <section id="tReq" class="hidden"><div id="reqs"></div></section>
+    <section id="tTk" class="hidden"><div id="tks"></div></section>
     <section id="tPay" class="hidden"><div id="pays"></div></section>
   </div>
 </main>
@@ -101,7 +108,7 @@ let data = null, shown = 50;
 
 async function api(path, body) {
   const r = await fetch((window.API_BASE || '') + path, {method:'POST', headers:{'Content-Type':'application/json','X-Init-Data':tg.initData}, body: JSON.stringify(body || {})});
-  if (!r.ok) throw new Error(r.status);
+  if (!r.ok) { const d = await r.json().catch(() => ({})); throw new Error(d.error || r.status); }
   return r.json();
 }
 function el(tag, cls, text) { const e = document.createElement(tag); if (cls) e.className = cls; if (text != null) e.textContent = text; return e; }
@@ -119,7 +126,7 @@ function renderStats() {
   const s = data.stats, box = $('stats'); box.innerHTML = '';
   [['Пользователей', s.users, s.new_today ? '+' + s.new_today + ' сегодня' : ''], ['Активны за 7 дней', s.active_7d, ''],
    ['Раскладов', s.readings, s.readings_today ? '+' + s.readings_today + ' сегодня' : ''], ['Сообщений всего', s.messages, ''],
-   ['Выручка', money(s.paid_total), ''], ['Оплат', s.paid_count, '']].forEach(([l, v, d]) => {
+   ['Выручка', money(s.paid_total), ''], ['Оплат', s.paid_count, ''], ['Открытых обращений', s.tickets_open, '']].forEach(([l, v, d]) => {
     const c = el('div', 'stat'); const b = el('b', '', v); c.appendChild(b);
     const sp = el('span', '', l); if (d) sp.appendChild(el('i', '', d)); c.appendChild(sp); box.appendChild(c);
   });
@@ -157,6 +164,48 @@ function renderReqs() {
     const t = el('div', 'r'); t.appendChild(el('b', '', r.first_name || (r.username ? '@' + r.username : 'ID ' + r.uid))); t.appendChild(el('div', '', ago(r.ts))); row.appendChild(t);
     row.onclick = () => openUser(r.uid); box.appendChild(row);
   });
+}
+const TSTATUS = {open: ['ждёт ответа', 'w'], answered: ['отвечено', ''], closed: ['закрыто', 'p']};
+function renderTks() {
+  const box = $('tks'); box.innerHTML = '';
+  const open = data.tickets.filter(t => t.status === 'open').length;
+  $('tkBadge').textContent = open ? '(' + open + ')' : '';
+  if (!data.tickets.length) { box.appendChild(el('div', 'empty', 'Обращений пока нет. Они появятся, когда пользователи напишут в поддержку.')); return; }
+  data.tickets.forEach(t => {
+    const r = el('div', 'row'), m = el('div', 'm');
+    m.appendChild(el('b', '', '№' + t.id + ' · ' + t.subject));
+    m.appendChild(el('small', '', name({...t, id: t.uid}) + ' · ' + (t.last_author === 'admin' ? 'вы: ' : '') + (t.last_text || '').slice(0, 80)));
+    r.appendChild(m);
+    const st = TSTATUS[t.status] || [t.status, 'p'], right = el('div', 'r');
+    right.appendChild(el('span', 'pill ' + st[1], st[0])); right.appendChild(el('div', '', ago(t.updated)));
+    r.appendChild(right); r.onclick = () => openTicket(t.id); box.appendChild(r);
+  });
+}
+async function openTicket(id, note) {
+  $('bg').classList.remove('hidden'); const sh = $('sheet'); sh.innerHTML = ''; sh.appendChild(el('div', 'empty', 'Загрузка…'));
+  try {
+    const d = await api('/api/admin/ticket', {id}), t = d.ticket; sh.innerHTML = '';
+    sh.appendChild(el('h2', '', '№' + t.id + ' · ' + t.subject));
+    sh.appendChild(el('small', '', name({...t, id: t.uid}) + ' · ID ' + t.uid + ' · ' + fmtDate(t.ts) + ' · ' + (TSTATUS[t.status] || [t.status])[0]));
+    if (note) { const n = el('div', 'rd', note); n.style.color = 'var(--rose)'; sh.appendChild(n); }
+    d.messages.forEach(m => {
+      const x = el('div', 'rd'); x.style.whiteSpace = 'pre-wrap';
+      x.appendChild(el('small', '', (m.author === 'user' ? 'Пользователь' : 'Вы') + ' · ' + fmtDate(m.ts))); x.appendChild(el('div', '', m.text)); sh.appendChild(x);
+    });
+    const ta = el('textarea', 'ta'); ta.placeholder = 'Ответ пользователю…'; ta.maxLength = 2000; sh.appendChild(ta);
+    const send = el('button', 'btn', 'Отправить ответ'), close = el('button', 'btn sec', 'Закрыть обращение'), err = el('div', 'rd', ''); err.style.color = 'var(--rose)';
+    send.onclick = async () => {
+      const text = ta.value.trim(); if (!text) return; send.disabled = true;
+      try { const r = await api('/api/admin/ticket/reply', {id, text}); await load(); openTicket(id, r.delivered ? '' : 'Ответ сохранён, но Telegram его не доставил (возможно, пользователь заблокировал бота).'); }
+      catch (e) { err.textContent = e.message; send.disabled = false; }
+    };
+    close.onclick = async () => {
+      close.disabled = true;
+      try { await api('/api/admin/ticket/close', {id}); await load(); $('bg').classList.add('hidden'); }
+      catch (e) { err.textContent = e.message; close.disabled = false; }
+    };
+    [send, close, err].forEach(x => sh.appendChild(x));
+  } catch (e) { sh.innerHTML = ''; sh.appendChild(el('div', 'empty', 'Ошибка загрузки')); }
 }
 function renderPays() {
   const box = $('pays'); box.innerHTML = '';
@@ -199,7 +248,7 @@ async function load() {
   try {
     data = await api('/api/admin/overview');
     $('lock').classList.add('hidden'); $('app').classList.remove('hidden');
-    renderStats(); chart('chU', 'axU', data.series.users); chart('chR', 'axR', data.series.readings); renderUsers(); renderReqs(); renderPays();
+    renderStats(); chart('chU', 'axU', data.series.users); chart('chR', 'axR', data.series.readings); renderUsers(); renderReqs(); renderTks(); renderPays();
     $('upd').textContent = 'обновлено ' + new Date().toLocaleTimeString('ru-RU', {hour: '2-digit', minute: '2-digit'});
   } catch (e) {
     $('app').classList.add('hidden'); $('lock').classList.remove('hidden');
@@ -211,7 +260,7 @@ $('ref').onclick = load;
 $('find').oninput = () => { shown = 50; renderUsers(); };
 document.querySelectorAll('.tab').forEach(t => t.onclick = () => {
   document.querySelectorAll('.tab').forEach(x => x.classList.toggle('on', x === t));
-  ['users', 'req', 'pay'].forEach(k => $(k === 'users' ? 'tUsers' : k === 'req' ? 'tReq' : 'tPay').classList.toggle('hidden', t.dataset.t !== k));
+  Object.entries({users: 'tUsers', req: 'tReq', tk: 'tTk', pay: 'tPay'}).forEach(([k, id]) => $(id).classList.toggle('hidden', t.dataset.t !== k));
 });
 load();
 </script>
