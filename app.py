@@ -1014,6 +1014,28 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        m = re.fullmatch(r"/cards/((?:t/)?[mwcsp]\d{2})\.jpg", path)
+        if m:
+            f = ROOT / "docs" / "cards" / f"{m.group(1)}.jpg"
+            if not f.is_file():
+                return self.send_error(404)
+            body = f.read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "image/jpeg")
+            self.send_header("Cache-Control", "public, max-age=604800")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
+        if path == "/cards.json":
+            body = (ROOT / "docs" / "cards.json").read_bytes()
+            self.send_response(200)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Cache-Control", "public, max-age=3600")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path in ("/privacy", "/privacy.html", "/terms", "/terms.html"):
             body = legal_html(path.strip("/").split(".")[0]).encode()
             self.send_response(200)

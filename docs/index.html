@@ -354,6 +354,31 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
   background: linear-gradient(115deg, transparent 38%, rgba(255,255,255,.42) 50%, transparent 62%); }
 .tcard.flip .shine { animation: foil 1.3s .9s ease-out 1 both; }
 @keyframes foil { to { transform: translateX(130%); } }
+/* настоящие иллюстрации колоды Райдера–Уэйта–Смит */
+.front.art { padding: 0; gap: 0; background: #14101f; border: 1px solid rgba(230,198,117,.7); border-radius: 7% / 4.2%;
+  box-shadow: 0 12px 28px rgba(0,0,0,.6), 0 0 22px rgba(230,198,117,.18); }
+.front.art::before { display: none; }
+.front.art.rev { border-color: rgba(255,148,168,.85); box-shadow: 0 12px 28px rgba(0,0,0,.6), 0 0 22px rgba(255,148,168,.3); }
+.artimg { display: block; width: 100%; height: 100%; object-fit: cover; }
+.front.art.rev .artimg { transform: rotate(180deg); }
+.cap b { color: var(--gold2); font-weight: 600; }
+.cardmore { margin: 2px 0 12px; padding: 7px 12px; border-radius: 12px; cursor: pointer; font: 500 13px var(--sans); color: var(--gold2);
+  background: rgba(230,198,117,.08); border: 1px solid rgba(230,198,117,.4); }
+.cd-top { display: flex; gap: 14px; align-items: flex-start; margin-bottom: 8px; }
+.cd-top img { width: 116px; flex: none; border-radius: 8px; cursor: zoom-in; box-shadow: 0 8px 24px rgba(0,0,0,.5); }
+.cd-top img.rev { transform: rotate(180deg); }
+.cd-top.zoom { flex-direction: column; align-items: center; }
+.cd-top.zoom img { width: min(300px, 80%); cursor: zoom-out; }
+.cd-pos { margin: 4px 0 8px; font-size: 12.5px; color: var(--muted); }
+.cd-sec { margin: 14px 0; }
+.cd-sec h4 { margin: 0 0 4px; font: 600 12px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--gold); }
+.cd-sec p { margin: 0; font-size: 14.5px; line-height: 1.55; }
+.cd-sec.now { padding: 8px 0 8px 12px; border-left: 3px solid var(--gold); background: rgba(230,198,117,.07); border-radius: 0 12px 12px 0; }
+.cd-note { margin: 14px 0 10px; font-size: 12px; color: #8d89a8; }
+.dkgrid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; margin-bottom: 8px; align-items: start; }
+.dk { min-width: 0; padding: 0; border: 0; background: none; text-align: center; cursor: pointer; font: 11px/1.2 var(--sans); }
+.dk img { display: block; width: 100%; aspect-ratio: 150 / 251; object-fit: cover; border-radius: 6px; border: 1px solid var(--line); background: #14101f; }
+.dk span { display: block; margin-top: 4px; color: var(--muted); }
 .front.s-wands { box-shadow: 0 12px 28px rgba(0,0,0,.55), 0 0 24px rgba(255,170,100,.28); }
 .front.s-cups { box-shadow: 0 12px 28px rgba(0,0,0,.55), 0 0 24px rgba(110,190,255,.28); }
 .front.s-swords { box-shadow: 0 12px 28px rgba(0,0,0,.55), 0 0 24px rgba(200,210,235,.26); }
@@ -409,6 +434,14 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
       </button>
       <div class="birthbox hidden" id="birthBox"><input type="date" id="birth" min="1900-01-01"></div>
     </div>
+
+    <div class="panel">
+      <button class="birth" id="deckBtn" type="button">
+        <span class="ic">🃏</span>
+        <span><b>Колода таро</b><small>Значения всех 78 карт с иллюстрациями</small></span>
+        <span class="chev">›</span>
+      </button>
+    </div>
     <p class="disc">Таро — инструмент для размышления, а не гарантия.</p>
   </section>
 
@@ -452,6 +485,23 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
   <div class="h3">Мои обращения</div>
   <div id="supList"></div>
   <button class="sheet-close" id="supClose" type="button" style="margin-top:8px">Закрыть</button>
+</div>
+<div class="sheet hidden" id="cardSheet" role="dialog" aria-modal="true">
+  <div class="grip"></div>
+  <div class="cd-top" id="cdTop"><img id="cdImg" alt=""><div><b class="sheet-title" id="cdName"></b><p class="cd-pos" id="cdPos"></p><div class="kw" id="cdKw"></div></div></div>
+  <div id="cdBody"></div>
+  <p class="cd-note">Это общее значение карты. В вашем раскладе оно уточняется вопросом и соседними картами.</p>
+  <button class="sheet-close" id="cdGo" type="button" style="margin-bottom:8px">К толкованию в раскладе</button>
+  <button class="sheet-close" id="cdBack" type="button" style="margin-bottom:8px">← К колоде</button>
+  <button class="sheet-close" id="cdClose" type="button">Закрыть</button>
+</div>
+<div class="sheet hidden" id="deckSheet" role="dialog" aria-modal="true">
+  <div class="grip"></div>
+  <b class="sheet-title">Колода таро</b>
+  <p class="sup-contact">Значения всех 78 карт. Нажмите на карту, чтобы прочитать подробнее.</p>
+  <div id="deckBody"></div>
+  <p class="cd-note">Иллюстрации: колода Райдера–Уэйта–Смит (1909), художница Памела Колман Смит, общественное достояние.</p>
+  <button class="sheet-close" id="deckClose" type="button">Закрыть</button>
 </div>
 
 <div class="dock" id="dockSetup"><div><button class="go" id="go" disabled>Разложить карты</button>
@@ -556,6 +606,17 @@ function cardMeta(name) {
   return {num: RANK[rank] || '', sym: SUIT_SVG[rest.join(' ')] || MAJOR_SVG, major: false};
 }
 
+const SUIT_ID = {'Жезлов': 'w', 'Кубков': 'c', 'Мечей': 's', 'Пентаклей': 'p'};
+const RANK_N = {'Туз': 1, 'Двойка': 2, 'Тройка': 3, 'Четвёрка': 4, 'Пятёрка': 5, 'Шестёрка': 6, 'Семёрка': 7, 'Восьмёрка': 8,
+  'Девятка': 9, 'Десятка': 10, 'Паж': 11, 'Рыцарь': 12, 'Королева': 13, 'Король': 14};
+// имя карты -> код файла иллюстрации (m00–m21 старшие, w/c/s/p01–14 младшие)
+function cardId(name) {
+  const mi = MAJOR.indexOf(name);
+  if (mi >= 0) return 'm' + String(mi).padStart(2, '0');
+  const [rank, ...rest] = name.split(' '), s = SUIT_ID[rest.join(' ')];
+  return s && RANK_N[rank] ? s + String(RANK_N[rank]).padStart(2, '0') : '';
+}
+const artUrl = (id, thumb) => 'cards/' + (thumb ? 't/' : '') + id + '.jpg';
 let botName = '';
 async function api(path, body) {
   const r = await fetch((window.API_BASE || '') + path, {method: 'POST',
@@ -609,16 +670,26 @@ function revealCards(list) {
   if (st.children.length !== list.length) showBacks(list.length);
   st.classList.remove('wait');
   list.forEach((c, i) => {
-    const m = cardMeta(c.name), slot = st.children[i], front = slot.querySelector('.front');
-    front.className = 'face front' + (c.reversed ? ' rev' : '') + (m.major ? ' maj' : '') + ' ' + suitClass(c.name);
-    front.innerHTML = `<i class="co c1"></i><i class="co c2"></i><i class="co c3"></i><i class="co c4"></i><div class="num"></div>` +
-      `<div class="emb"><div class="sym">${m.sym}</div></div><div class="plate"><div class="nm"></div><div class="rvtag"></div></div><div class="shine"></div>`;
-    front.querySelector('.num').textContent = m.num;
-    front.querySelector('.nm').textContent = c.name;
-    front.querySelector('.rvtag').textContent = c.reversed ? '↻ перевёрнутая' : '';
-    slot.querySelector('.cap').textContent = c.position;
+    const m = cardMeta(c.name), slot = st.children[i], front = slot.querySelector('.front'), id = cardId(c.name);
+    // запасной вид без картинки: рамка со знаком масти или аркана
+    const emblemFront = () => {
+      front.className = 'face front' + (c.reversed ? ' rev' : '') + (m.major ? ' maj' : '') + ' ' + suitClass(c.name);
+      front.innerHTML = `<i class="co c1"></i><i class="co c2"></i><i class="co c3"></i><i class="co c4"></i><div class="num"></div>` +
+        `<div class="emb"><div class="sym">${m.sym}</div></div><div class="plate"><div class="nm"></div><div class="rvtag"></div></div><div class="shine"></div>`;
+      front.querySelector('.num').textContent = m.num;
+      front.querySelector('.nm').textContent = c.name;
+      front.querySelector('.rvtag').textContent = c.reversed ? '↻ перевёрнутая' : '';
+    };
+    if (id) {
+      front.className = 'face front art' + (c.reversed ? ' rev' : '');
+      front.innerHTML = `<img class="artimg" alt="" src="${artUrl(id)}"><div class="shine"></div>`;
+      front.querySelector('img').onerror = emblemFront;
+    } else emblemFront();
+    const cap = slot.querySelector('.cap'), nm = document.createElement('b');
+    nm.textContent = c.name + (c.reversed ? ' ↻' : '');
+    cap.textContent = ''; cap.appendChild(nm); cap.appendChild(document.createElement('br')); cap.appendChild(document.createTextNode(c.position));
     slot.classList.add('tap');
-    slot.onclick = () => focusCard(i);
+    slot.onclick = () => openCard(c.name, c.reversed, {index: i, position: c.position});
     setTimeout(() => { slot.querySelector('.tcard').classList.add('flip'); buzz(); }, 350 + i * 330);
   });
 }
@@ -648,6 +719,9 @@ function addResult(res) {
       row.appendChild(head);
       if ((c.keywords || []).length) { const kw = node('div', 'kw'); c.keywords.forEach(k => kw.appendChild(node('span', '', k))); row.appendChild(kw); }
       row.appendChild(node('p', '', c.meaning));
+      const more = node('button', 'cardmore', '📖 Значение карты'); more.type = 'button';
+      more.onclick = () => openCard(c.card, c.orientation === 'reversed', {position: c.position, index: i});
+      row.appendChild(more);
       box.appendChild(row);
     });
     if (res.synthesis) { box.appendChild(node('div', 'sec', 'Общая картина')); box.appendChild(node('p', '', res.synthesis)); }
@@ -728,6 +802,14 @@ function drawCard(c, card, img, x, y, w, h) {
   lines.forEach((t, k) => c.fillText(t, cx, y + h * (lines.length === 1 ? .84 : .79) + k * fs * 1.1));
   if (card.reversed) { c.fillStyle = '#ff94a8'; c.font = '600 ' + Math.round(w * .075) + 'px sans-serif'; c.fillText('↻ перевёрнутая', cx, y + h * .955); }
 }
+function drawArt(c, art, card, x, y, w, h) {
+  c.save(); c.shadowColor = 'rgba(0,0,0,.6)'; c.shadowBlur = 24; c.shadowOffsetY = 10;
+  rr(c, x, y, w, h, w * .06); c.fillStyle = '#14101f'; c.fill(); c.restore();
+  c.save(); rr(c, x, y, w, h, w * .06); c.clip(); c.translate(x + w / 2, y + h / 2);
+  if (card.reversed) c.rotate(Math.PI);
+  c.drawImage(art, -w / 2, -h / 2, w, h); c.restore();
+  c.lineWidth = 2; c.strokeStyle = card.reversed ? '#ff94a8' : '#e6c675'; rr(c, x, y, w, h, w * .06); c.stroke();
+}
 async function makeShareImage(res) {
   try { await document.fonts.ready; } catch (e) {}
   const W = 1200, H = 630, cv = document.createElement('canvas'); cv.width = W; cv.height = H;
@@ -741,11 +823,17 @@ async function makeShareImage(res) {
   c.textAlign = 'center'; c.fillStyle = '#e6c675'; c.font = '600 22px Georgia, serif'; c.fillText('✦  ОТВЕТЫ НА ВАШИ ВОПРОСЫ ТАРО  ✦', W / 2, 62);
   c.fillStyle = '#f8e6b0'; c.font = '700 46px "Cormorant Garamond", Georgia, serif'; c.fillText(spreadName || 'Расклад', W / 2, 118);
   const list = res.cards || [], n = list.length, rows = n > 5 ? 2 : 1, per = Math.ceil(n / rows), areaTop = 145, areaH = 360, gap = 18;
-  const h = rows === 1 ? Math.min(areaH, 340) : (areaH - gap) / 2, w = h / 1.65;
-  const imgs = await Promise.all(list.map(card => svgImg(cardMeta(card.name).sym, cardColor(card))));
+  const h = rows === 1 ? Math.min(areaH, 340) : (areaH - gap) / 2, w = h / 1.68;
+  const loadArt = card => new Promise(ok => { const i = new Image(); i.onload = () => ok(i); i.onerror = () => ok(null); i.src = artUrl(cardId(card.name)); });
+  const arts = await Promise.all(list.map(loadArt));
+  const imgs = await Promise.all(list.map((card, i) => arts[i] ? null : svgImg(cardMeta(card.name).sym, cardColor(card))));
   list.forEach((card, i) => {
     const r = Math.floor(i / per), inRow = r === rows - 1 ? n - r * per : per, idx = i - r * per, rowW = inRow * w + (inRow - 1) * gap;
-    drawCard(c, card, imgs[i], (W - rowW) / 2 + idx * (w + gap), areaTop + r * (h + gap) + (rows === 1 ? (areaH - h) / 2 : 0), w, h);
+    const x = (W - rowW) / 2 + idx * (w + gap), y = areaTop + r * (h + gap) + (rows === 1 ? (areaH - h) / 2 - 12 : 0);
+    if (arts[i]) {
+      drawArt(c, arts[i], card, x, y, w, h);
+      if (rows === 1) { c.fillStyle = '#f8e6b0'; c.textAlign = 'center'; c.font = '600 19px "Cormorant Garamond", Georgia, serif'; c.fillText(card.name + (card.reversed ? ' ↻' : ''), x + w / 2, y + h + 28); }
+    } else drawCard(c, card, imgs[i], x, y, w, h);
   });
   c.textAlign = 'center'; c.fillStyle = '#9b96b6'; c.font = '500 24px sans-serif';
   c.fillText(botName ? 'Свой расклад — в Telegram: @' + botName : 'Расклад Таро Уэйта в Telegram за минуту', W / 2, 580);
@@ -949,7 +1037,7 @@ function openPlans(note) {
   $('sheetNote').textContent = note || '';
   loadQuota();
 }
-function closePlans() { $('sheetBg').classList.add('hidden'); $('sheet').classList.add('hidden'); $('supSheet').classList.add('hidden'); }
+function closePlans() { ['sheetBg', 'sheet', 'supSheet', 'cardSheet', 'deckSheet'].forEach(x => $(x).classList.add('hidden')); }
 function setPlansBusy(v) { document.querySelectorAll('.plan, .don').forEach(x => x.disabled = v); }
 async function buyPlan(id) {
   setPlansBusy(true); $('sheetNote').textContent = '';
@@ -1055,6 +1143,58 @@ $('supBtn').onclick = () => openSupport();
 $('supClose').onclick = closePlans;
 const startScreen = new URLSearchParams(location.search).get('screen');
 if (startScreen === 'support') openSupport(); else if (startScreen === 'tariffs') openPlans();
+
+/* карты: подробные значения и колода */
+let cardsInfo = null;
+async function loadCardsInfo() {
+  if (!cardsInfo) { try { cardsInfo = await (await fetch('cards.json')).json(); } catch (e) { cardsInfo = {}; } }
+  return cardsInfo;
+}
+function showSheet(id) {
+  ['sheet', 'supSheet', 'cardSheet', 'deckSheet'].forEach(x => $(x).classList.toggle('hidden', x !== id));
+  $('sheetBg').classList.remove('hidden');
+}
+async function openCard(name, reversed, opt) {
+  opt = opt || {};
+  const id = cardId(name), info = (await loadCardsInfo())[id];
+  showSheet('cardSheet'); buzz();
+  const img = $('cdImg'); img.src = id ? artUrl(id) : ''; img.alt = name; img.classList.toggle('rev', !!reversed); $('cdTop').classList.remove('zoom');
+  $('cdName').textContent = name;
+  $('cdPos').textContent = opt.position ? opt.position + ' · ' + (reversed ? 'выпала перевёрнутой' : 'выпала в прямом положении') : '';
+  const kw = $('cdKw'); kw.innerHTML = ''; (info ? info.kw : []).forEach(k => kw.appendChild(node('span', '', k)));
+  const body = $('cdBody'); body.innerHTML = '';
+  if (!info) body.appendChild(node('p', 'sup-contact', 'Описание этой карты пока недоступно.'));
+  else [['Что изображено', info.sym, false], ['Прямое положение', info.up, !!opt.position && !reversed], ['Перевёрнутое положение', info.rev, !!reversed],
+        ['Любовь и отношения', info.love, false], ['Работа и деньги', info.work, false], ['Совет карты', info.adv, false]].forEach(([t, text, now]) => {
+    const sec = node('div', 'cd-sec' + (now ? ' now' : '')), p = document.createElement('p');
+    p.textContent = text; sec.appendChild(node('h4', '', t)); sec.appendChild(p); body.appendChild(sec);
+  });
+  $('cdBack').classList.toggle('hidden', !opt.fromDeck);
+  const go = $('cdGo'); go.classList.toggle('hidden', !(opt.index != null && document.getElementById('cr-' + opt.index)));
+  go.onclick = () => { closePlans(); focusCard(opt.index); };
+  $('cardSheet').scrollTop = 0;
+}
+const DECK_SUITS = [['Жезлов', 'Жезлы'], ['Кубков', 'Кубки'], ['Мечей', 'Мечи'], ['Пентаклей', 'Пентакли']];
+function openDeck() {
+  showSheet('deckSheet'); $('deckSheet').scrollTop = 0;
+  const body = $('deckBody'); if (body.children.length) return;
+  const groups = [['Старшие арканы', MAJOR.slice()]].concat(DECK_SUITS.map(([gen, title]) => [title, Object.keys(RANK_N).map(r => r + ' ' + gen)]));
+  groups.forEach(([title, names]) => {
+    body.appendChild(node('div', 'h3', title));
+    const grid = node('div', 'dkgrid');
+    names.forEach(n => {
+      const b = document.createElement('button'), im = document.createElement('img'), sp = document.createElement('span');
+      b.type = 'button'; b.className = 'dk'; im.loading = 'lazy'; im.alt = n; im.src = artUrl(cardId(n), true); sp.textContent = n;
+      b.appendChild(im); b.appendChild(sp); b.onclick = () => openCard(n, false, {fromDeck: true}); grid.appendChild(b);
+    });
+    body.appendChild(grid);
+  });
+}
+$('deckBtn').onclick = openDeck;
+$('cdBack').onclick = openDeck;
+$('cdClose').onclick = closePlans;
+$('deckClose').onclick = closePlans;
+$('cdImg').onclick = () => $('cdTop').classList.toggle('zoom');
 function select(id, quiet) {
   const s = spreadList.find(x => x.id === id); if (!s) return;
   spread = id; spreadName = s.name; spreadCount = s.count;
