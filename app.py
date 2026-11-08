@@ -52,8 +52,8 @@ FREE_REQUESTS = 3  # бесплатных запросов на пользова
 PLANS = {
     "pack5": {"button": "5 запросов — 129 ₽", "title": "5 запросов", "description": "Пять запросов к таро",
               "price": 129, "requests": 5, "days": 0},
-    "pack10": {"button": "10 запросов — 169 ₽", "title": "10 запросов", "description": "Десять запросов к таро",
-               "price": 169, "requests": 10, "days": 0},
+    "pack10": {"button": "10 запросов — 189 ₽", "title": "10 запросов", "description": "Десять запросов к таро",
+               "price": 189, "requests": 10, "days": 0},
     "unlimited": {"button": "Безлимит на 30 дней — 499 ₽", "title": "Безлимит на 30 дней",
                   "description": "Безлимитные запросы к таро на 30 дней", "price": 499, "requests": 0, "days": 30},
 }
@@ -246,6 +246,8 @@ def tariffs_text():
              f"🎁 Бесплатно: {FREE_REQUESTS} {plural(FREE_REQUESTS, 'запрос', 'запроса', 'запросов')} (один раз на аккаунт)"]
     lines += [f"• {p['title']} — {p['price']} ₽ ({plan_detail(p)})" for p in PLANS.values()]
     lines += ["", "💛 Поддержать проект: кнопки внизу. Это добровольное пожертвование, оно не добавляет запросов."]
+    if not payments_ready() and SUPPORT_TG:
+        lines += ["", f"💬 Покупка пока через @{SUPPORT_TG}: {contact_url()}"]
     return "\n".join(lines + [""] + ["· " + r for r in RULES])
 
 
@@ -271,7 +273,9 @@ def legal_html(name):
     page = (ROOT / "docs" / f"{name}.html").read_text(encoding="utf-8")
     operator = htmllib.escape(OPERATOR_NAME) if OPERATOR_NAME else "владелец сервиса (контакты указаны ниже)"
     return (page.replace("{{OPERATOR}}", operator).replace("{{CONTACTS}}", contacts_html())
-            .replace("{{TARIFFS}}", tariffs_html()).replace("{{FREE}}", str(FREE_REQUESTS)))
+            .replace("{{TARIFFS}}", tariffs_html()).replace("{{FREE}}", str(FREE_REQUESTS))
+            .replace("{{PAYNOTE}}", "" if payments_ready() or not SUPPORT_TG else
+                     f" До подключения онлайн-оплаты тариф можно приобрести, написав @{htmllib.escape(SUPPORT_TG)} в Telegram."))
 
 
 # ---------- Обращения в поддержку ----------
@@ -630,10 +634,24 @@ def send_tariffs(chat_id, uid, intro=""):
     tg("sendMessage", chat_id=chat_id, text=text, reply_markup={"inline_keyboard": buy + donate + legal_buttons()})
 
 
+def payments_ready():
+    return bool(os.environ.get("PAYMENT_PROVIDER_TOKEN", ""))
+
+
+def contact_url():
+    return f"https://t.me/{SUPPORT_TG}" if SUPPORT_TG else ""
+
+
+def no_payment_text():
+    """Что видит пользователь, пока онлайн-оплата не подключена."""
+    text = "Оплата скоро появится. Пока тарифы можно только посмотреть."
+    return text + (f"\nДля покупки пока напишите @{SUPPORT_TG}." if SUPPORT_TG else "")
+
+
 def invoice_fields(plan_id):
     token = os.environ.get("PAYMENT_PROVIDER_TOKEN", "")
     if not token:
-        raise ValueError("Оплата скоро появится. Пока тарифы можно только посмотреть.")
+        raise ValueError(no_payment_text())
     plan = ALL_OFFERS[plan_id]
     return {"title": plan["title"], "description": plan["description"], "payload": plan_id,
             "provider_token": token, "currency": "RUB", "prices": [{"label": plan["title"], "amount": plan["price"] * 100}]}
@@ -643,7 +661,8 @@ def send_invoice(chat_id, plan_id):
     try:
         tg("sendInvoice", chat_id=chat_id, **invoice_fields(plan_id))
     except ValueError as e:
-        tg("sendMessage", chat_id=chat_id, text=str(e))
+        kwargs = {"reply_markup": {"inline_keyboard": [[{"text": f"✉ Написать @{SUPPORT_TG}", "url": contact_url()}]]}} if SUPPORT_TG else {}
+        tg("sendMessage", chat_id=chat_id, text=str(e), **kwargs)
 
 
 def quota_info(uid):
@@ -1097,7 +1116,7 @@ class Handler(BaseHTTPRequestHandler):
             try:
                 link = tg("createInvoiceLink", **invoice_fields(body["plan"]))["result"]
             except ValueError as e:
-                return self.reply_json(400, {"error": str(e)})
+                return self.reply_json(400, {"error": str(e), "contact": contact_url(), "contact_name": SUPPORT_TG})
             return self.reply_json(200, {"url": link})
         if path == "/api/share":
             try:

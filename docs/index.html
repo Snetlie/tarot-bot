@@ -624,7 +624,7 @@ async function api(path, body) {
   const data = await r.json().catch(() => ({}));
   if (!r.ok) {
     const err = new Error(data.error || 'Ошибка связи, попробуйте ещё раз');
-    err.status = r.status;
+    err.status = r.status; err.data = data;
     throw err;
   }
   return data;
@@ -1055,7 +1055,16 @@ async function buyPlan(id) {
       }
     });
   } catch (e) {
-    $('sheetNote').textContent = e.message;
+    const note = $('sheetNote'), d = e.data || {};
+    // оплата ещё не подключена: показываем сообщение и ссылку на аккаунт для покупки
+    note.textContent = e.message.split('\n')[0];
+    if (d.contact) {
+      note.appendChild(document.createElement('br'));
+      note.appendChild(document.createTextNode('Для покупки пока напишите '));
+      const a = document.createElement('a'); a.href = d.contact; a.textContent = '@' + d.contact_name; a.style.color = 'var(--gold2)';
+      a.onclick = ev => { ev.preventDefault(); try { tg.openTelegramLink(d.contact); } catch (x) { window.open(d.contact, '_blank'); } };
+      note.appendChild(a); note.appendChild(document.createTextNode('.'));
+    }
     setPlansBusy(false);
   }
 }
