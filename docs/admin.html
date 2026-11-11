@@ -67,6 +67,11 @@ textarea.ta { width:100%; height:92px; margin-top:12px; background:rgba(0,0,0,.2
 .btn.sec { background:var(--glass2); color:var(--text); font-weight:500; }
 .btn:disabled { opacity:.4; }
 .tab b { color: var(--rose); font-weight:600; }
+input.tx { width:100%; background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:14px; padding:12px 14px; color:var(--text); font:16px var(--sans); outline:none; margin-top:8px; }
+.lbl { display:block; margin-top:12px; font-size:12px; color:var(--muted); }
+.note { margin-top:10px; font-size:13px; color:var(--muted); line-height:1.45; }
+.note.ok { color:var(--green); } .note.err { color:var(--rose); }
+code.cb { display:block; margin-top:6px; padding:10px 12px; border-radius:12px; background:rgba(0,0,0,.3); font:13px/1.4 ui-monospace,Consolas,monospace; word-break:break-all; user-select:all; }
 </style>
 </head>
 <body>
@@ -95,7 +100,7 @@ textarea.ta { width:100%; height:92px; margin-top:12px; background:rgba(0,0,0,.2
     </section>
     <section id="tReq" class="hidden"><div id="reqs"></div></section>
     <section id="tTk" class="hidden"><div id="tks"></div></section>
-    <section id="tPay" class="hidden"><div id="pays"></div></section>
+    <section id="tPay" class="hidden"><div id="plat"></div><div id="pays"></div></section>
   </div>
 </main>
 <div class="sheet-bg hidden" id="bg"><div class="sheet" id="sheet"></div></div>
@@ -208,7 +213,38 @@ async function openTicket(id, note) {
     [send, close, err].forEach(x => sh.appendChild(x));
   } catch (e) { sh.innerHTML = ''; sh.appendChild(el('div', 'empty', 'Ошибка загрузки')); }
 }
+function renderPlatega(msg, isErr) {
+  const p = data.platega, box = $('plat'); box.innerHTML = '';
+  const card = el('div', 'card'); card.appendChild(el('h3', '', 'Онлайн-оплата Platega'));
+  const st = el('div', 'note ' + (p.ready ? 'ok' : 'err'), p.ready ? '✅ Подключена. ID мерчанта: ' + p.merchant : '⚠ Не подключена: ' + (p.webapp_ok ? 'введите ключи ниже.' : 'на сервере не задан WEBAPP_URL.'));
+  st.style.marginTop = '0'; card.appendChild(st);
+  const m = el('input', 'tx'), s = el('input', 'tx');
+  m.placeholder = 'ID мерчанта'; m.autocomplete = 'off'; m.spellcheck = false;
+  s.placeholder = 'API-ключ (' + (p.secret_set ? 'сохранён, вставьте новый, чтобы заменить' : 'вставьте из настроек Platega') + ')'; s.type = 'password'; s.autocomplete = 'off';
+  [['ID мерчанта', m], ['API-ключ', s]].forEach(([t, i]) => { card.appendChild(el('span', 'lbl', t)); card.appendChild(i); });
+  const save = el('button', 'btn', 'Проверить и сохранить'), clear = el('button', 'btn sec', 'Удалить сохранённые ключи');
+  const out = el('div', 'note' + (msg ? (isErr ? ' err' : ' ok') : ''), msg || '');
+  save.onclick = async () => {
+    const mv = m.value.trim(), sv = s.value.trim(); if (!mv || !sv) { out.className = 'note err'; out.textContent = 'Заполните оба поля.'; return; }
+    save.disabled = true; out.className = 'note'; out.textContent = 'Проверяем ключи в Platega…';
+    try { data.platega = await api('/api/admin/platega', {merchant: mv, secret: sv}); renderPlatega('Ключи проверены и сохранены. Оплата включена.', false); }
+    catch (e) { out.className = 'note err'; out.textContent = e.message; save.disabled = false; }
+  };
+  clear.onclick = async () => {
+    if (!confirm('Удалить ключи, сохранённые в админке? Оплата выключится, если ключей нет в /etc/tarot.env.')) return;
+    try { data.platega = await api('/api/admin/platega', {merchant: '', secret: ''}); renderPlatega('Сохранённые ключи удалены.', false); }
+    catch (e) { out.className = 'note err'; out.textContent = e.message; }
+  };
+  [save, clear, out].forEach(x => card.appendChild(x));
+  if (p.callback) {
+    card.appendChild(el('span', 'lbl', 'Callback URL для кабинета Platega (Настройки → Callback URL)'));
+    card.appendChild(el('code', 'cb', p.callback));
+  }
+  card.appendChild(el('div', 'note', 'Ключи хранятся только на вашем сервере и обратно не показываются.'));
+  box.appendChild(card);
+}
 function renderPays() {
+  renderPlatega();
   const box = $('pays'); box.innerHTML = '';
   if (!data.payments.length) { box.appendChild(el('div', 'empty', 'Оплат пока нет. Здесь появятся платежи, когда вы подключите оплату.')); return; }
   data.payments.forEach(p => {

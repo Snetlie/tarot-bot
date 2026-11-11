@@ -233,16 +233,71 @@ def apply_offer(c, uid, offer_id, now):
 
 # ---------- Оплата через Platega ----------
 
-def platega_call(method, path, body=None):
+def load_platega():
+    """Ключи, сохранённые в админке, главнее значений из /etc/tarot.env."""
+    global PLATEGA_MERCHANT, PLATEGA_SECRET
+    with closing(db()) as c:
+        rows = {r["key"]: r["value"] for r in c.execute(
+            "SELECT key, value FROM meta WHERE key IN ('platega_merchant', 'platega_secret')")}
+    if rows.get("platega_merchant") and rows.get("platega_secret"):
+        PLATEGA_MERCHANT, PLATEGA_SECRET = rows["platega_merchant"], rows["platega_secret"]
+
+
+def platega_state():
+    """Состояние для админки. Секретный ключ наружу не отдаём никогда."""
+    m = PLATEGA_MERCHANT
+    return {"ready": payments_ready(), "secret_set": bool(PLATEGA_SECRET),
+            "merchant": (m[:4] + "…" + m[-4:]) if len(m) > 8 else ("задан" if m else ""),
+            "webapp_ok": bool(WEBAPP_URL),
+            "callback": (WEBAPP_URL + "/api/platega/callback") if WEBAPP_URL else ""}
+
+
+def set_platega(merchant, secret):
+    """Проверяет ключи запросом в Platega и сохраняет их в базу. Пустые значения стирают ключи."""
+    global PLATEGA_MERCHANT, PLATEGA_SECRET
+    merchant, secret = (merchant or "").strip(), (secret or "").strip()
+    if not merchant and not secret:
+        with closing(db()) as c, c:
+            c.execute("DELETE FROM meta WHERE key IN ('platega_merchant', 'platega_secret')")
+        PLATEGA_MERCHANT, PLATEGA_SECRET = (os.environ.get("PLATEGA_MERCHANT_ID", "").strip(),
+                                            os.environ.get("PLATEGA_SECRET", "").strip())
+        return
+    ok = re.compile(r"[\x21-\x7e]+")  # печатные символы без пробелов
+    if not (8 <= len(merchant) <= 80 and ok.fullmatch(merchant)):
+        raise ValueError("ID мерчанта выглядит неверно. Скопируйте его целиком из настроек Platega.")
+    if not (8 <= len(secret) <= 600 and ok.fullmatch(secret)):
+        raise ValueError("API-ключ выглядит неверно. Скопируйте его целиком, без пробелов.")
+    try:  # несуществующая транзакция: с верными ключами ответ не 401/403, с неверными — отказ доступа
+        platega_call("GET", "/transaction/00000000-0000-0000-0000-000000000000", merchant=merchant, secret=secret)
+    except PlategaError as e:
+        if e.code in (401, 403):
+            raise ValueError("Platega не приняла эти ключи. Проверьте ID и сгенерируйте новый ключ.") from None
+    except ValueError:
+        pass  # Platega ответила не JSON-ом, но ключи не отвергла
+    except (urllib.error.URLError, OSError):
+        raise ValueError("Не удалось связаться с Platega. Попробуйте ещё раз через минуту.") from None
+    with closing(db()) as c, c:
+        c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('platega_merchant', ?)", (merchant,))
+        c.execute("INSERT OR REPLACE INTO meta (key, value) VALUES ('platega_secret', ?)", (secret,))
+    PLATEGA_MERCHANT, PLATEGA_SECRET = merchant, secret
+
+
+class PlategaError(RuntimeError):
+    def __init__(self, code, text=""):
+        super().__init__(f"Platega HTTP {code}: {text}")
+        self.code = code
+
+
+def platega_call(method, path, body=None, merchant=None, secret=None):
     req = urllib.request.Request(
         PLATEGA_URL + path, method=method, data=json.dumps(body).encode() if body is not None else None,
-        headers={"X-MerchantId": PLATEGA_MERCHANT, "X-Secret": PLATEGA_SECRET,
+        headers={"X-MerchantId": merchant or PLATEGA_MERCHANT, "X-Secret": secret or PLATEGA_SECRET,
                  "Content-Type": "application/json", "User-Agent": "tarot-bot/1.0"})
     try:
         with urllib.request.urlopen(req, timeout=20) as r:
             return json.load(r)
     except urllib.error.HTTPError as e:
-        raise RuntimeError(f"Platega HTTP {e.code}: {e.read().decode(errors='replace')[:300]}") from None
+        raise PlategaError(e.code, e.read().decode(errors="replace")[:300]) from None
 
 
 def start_payment(uid, offer_id):
@@ -631,7 +686,8 @@ def admin_overview():
                       (SELECT author FROM ticket_messages m WHERE m.ticket_id = t.id ORDER BY m.id DESC LIMIT 1) AS last_author
                FROM tickets t LEFT JOIN users u ON u.id = t.uid
                ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'answered' THEN 1 ELSE 2 END, t.updated DESC LIMIT 200""")]
-    return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests, "tickets": tickets}
+    return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests, "tickets": tickets,
+            "platega": platega_state()}
 
 
 def admin_user(uid):
@@ -1259,6 +1315,13 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
                 return self.reply_json(403, {"error": "forbidden"})
             if path == "/api/admin/overview":
                 return self.reply_json(200, admin_overview())
+            if path == "/api/admin/platega":
+                try:
+                    if "merchant" in body or "secret" in body:
+                        set_platega(str(body.get("merchant", "")), str(body.get("secret", "")))
+                except ValueError as e:
+                    return self.reply_json(400, {"error": str(e)})
+                return self.reply_json(200, platega_state())
             if path == "/api/admin/user":
                 return self.reply_json(200, admin_user(int(body.get("id", 0))))
             if path == "/api/admin/ticket":
@@ -1381,6 +1444,7 @@ def main():
     threading.Thread(target=set_menu_button, daemon=True).start()
     threading.Thread(target=bot_username, daemon=True).start()  # имя бота нужно для ссылок «поделиться»
     init_db()
+    load_platega()
     threading.Thread(target=poll_loop, daemon=True).start()
     print(f"Мини-апп на http://localhost:{PORT}  (WEBAPP_URL={WEBAPP_URL or 'не задан'})")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
