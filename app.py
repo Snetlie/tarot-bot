@@ -1010,7 +1010,50 @@ def http_json(url, headers, body, retried=False):
         raise RuntimeError(f"LLM HTTP {e.code}: {text[:500]}") from None
 
 
+LLM_ALERT_EVERY = 600  # не чаще одного сообщения о сбое нейросети раз в 10 минут
+_llm = {"alerted": 0.0}
+
+
+def llm_error_hint(e):
+    """Понятная причина сбоя для сообщения администратору."""
+    m = re.match(r"LLM HTTP (\d+)", str(e))
+    code = int(m.group(1)) if m else 0
+    hints = {401: "API-ключ нейросети не принят (неверный или отозван). Замените ключ в /etc/tarot.env.",
+             403: "Доступ запрещён: ключ заблокирован или нет прав на модель.",
+             402: "Закончились деньги на счёте нейросети. Пополните баланс.",
+             404: "Модель или адрес API не найдены. Проверьте OPENAI_MODEL и OPENAI_BASE_URL.",
+             429: "Превышен лимит запросов или токенов у поставщика нейросети."}
+    if code in hints:
+        return hints[code]
+    if code >= 500:
+        return "Сервис нейросети сам не работает (ошибка на их стороне)."
+    if isinstance(e, TimeoutError) or "timed out" in str(e).lower():
+        return "Нейросеть не ответила вовремя."
+    return "Не удалось связаться с нейросетью или она вернула неожиданный ответ."
+
+
 def call_llm(user_json):
+    """Вызов нейросети. При сбое сразу пишем администратору (не чаще раза в 10 минут), когда снова работает, сообщаем об этом."""
+    try:
+        out = _call_llm(user_json)
+    except Exception as e:  # noqa: BLE001
+        now = time.time()
+        with state_lock:
+            send = now - _llm["alerted"] >= LLM_ALERT_EVERY
+            if send:
+                _llm["alerted"] = now
+        if send:
+            tech = re.sub(r"\b(?:sk|gsk|csk)[-_][\w*.\-]{6,}", "[ключ скрыт]", str(e))[:300]
+            notify_admin(f"⚠ Нейросеть не справилась с запросом.\n{llm_error_hint(e)}\n\nТехнически: {tech}")
+        raise
+    with state_lock:
+        recovered, _llm["alerted"] = _llm["alerted"] > 0, 0.0
+    if recovered:
+        notify_admin("✅ Нейросеть снова отвечает, всё работает.")
+    return out
+
+
+def _call_llm(user_json):
     if PROVIDER == "openai":
         base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         data = http_json(
