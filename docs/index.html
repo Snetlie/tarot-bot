@@ -986,6 +986,7 @@ fetch((window.API_BASE || '') + '/api/spreads').then(r => r.json()).then(list =>
 
 /* тарифы */
 function renderPlans(q) {
+  lastPaid = q.last_paid || 0;
   const unlimited = q.unlimited_until > Date.now() / 1000;
   const left = q.free + q.credits;
   const plash = $('planBtn');
@@ -1039,23 +1040,35 @@ function openPlans(note) {
 }
 function closePlans() { ['sheetBg', 'sheet', 'supSheet', 'cardSheet', 'deckSheet'].forEach(x => $(x).classList.add('hidden')); }
 function setPlansBusy(v) { document.querySelectorAll('.plan, .don').forEach(x => x.disabled = v); }
-async function buyPlan(id) {
-  setPlansBusy(true); $('sheetNote').textContent = '';
-  try {
-    const {url} = await api('/api/invoice', {plan: id});
-    if (!tg.openInvoice) throw new Error('Эта версия Telegram не открывает оплату. Напишите боту /tariffs.');
-    tg.openInvoice(url, status => {
-      setPlansBusy(false);
-      if (status === 'paid') {
-        buzz(); loadQuota();
-        if (id.startsWith('donate')) $('sheetNote').textContent = 'Спасибо за поддержку проекта! 💛';
-        setTimeout(loadQuota, 2500); // бот получает подтверждение оплаты чуть позже
-      } else if (status === 'failed') {
-        $('sheetNote').textContent = 'Оплата не прошла. Попробуйте ещё раз.';
+let lastPaid = 0, payTimer = null;
+// после ухода на страницу оплаты раз в несколько секунд спрашиваем сервер, не пришло ли подтверждение
+function watchPayment(baseline, id) {
+  clearInterval(payTimer); let n = 0;
+  payTimer = setInterval(async () => {
+    n++;
+    try {
+      const q = await api('/api/quota', {});
+      if ((q.last_paid || 0) > baseline) {
+        clearInterval(payTimer); renderPlans(q); buzz();
+        $('sheetNote').style.color = 'var(--gold2)';
+        $('sheetNote').textContent = id.startsWith('donate') ? 'Спасибо за поддержку проекта! 💛' : 'Оплата прошла, запросы начислены. Спасибо!';
       }
-    });
+    } catch (e) {}
+    if (n >= 75) clearInterval(payTimer);
+  }, 4000);
+}
+async function buyPlan(id) {
+  setPlansBusy(true); $('sheetNote').style.color = ''; $('sheetNote').textContent = '';
+  try {
+    const {url} = await api('/api/invoice', {plan: id}), baseline = lastPaid;
+    try { tg.openLink(url); } catch (x) { window.open(url, '_blank'); }
+    $('sheetNote').style.color = 'var(--gold2)';
+    $('sheetNote').textContent = 'Открыли страницу оплаты. После оплаты вернитесь сюда, статус обновится сам.';
+    setPlansBusy(false);
+    watchPayment(baseline, id);
   } catch (e) {
     const note = $('sheetNote'), d = e.data || {};
+    note.style.color = '';
     // оплата ещё не подключена: показываем сообщение и ссылку на аккаунт для покупки
     note.textContent = e.message.split('\n')[0];
     if (d.contact) {

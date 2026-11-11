@@ -48,7 +48,7 @@ SYSTEM_PROMPT = (ROOT / "prompt.md").read_text(encoding="utf-8")
 HISTORY_LIMIT = 10
 COOLDOWN_SEC = 3
 FREE_REQUESTS = 3  # бесплатных запросов на пользователя, дальше нужен тариф
-# цены в рублях; оплата через Telegram (провайдер платежей из PAYMENT_PROVIDER_TOKEN)
+# цены в рублях; оплата через Platega (PLATEGA_MERCHANT_ID и PLATEGA_SECRET)
 PLANS = {
     "pack5": {"button": "5 запросов — 129 ₽", "title": "5 запросов", "description": "Пять запросов к таро",
               "price": 129, "requests": 5, "days": 0},
@@ -62,7 +62,7 @@ RULES = [
     "Сначала тратятся бесплатные запросы, потом купленные.",
     "Пакеты запросов не сгорают и хранятся на вашем аккаунте.",
     f"Безлимит действует {PLANS['unlimited']['days']} дней со дня оплаты. Автопродления нет: деньги списываются только когда вы сами оплачиваете.",
-    "Оплата разовая, в рублях, через Telegram. Условия возврата — в Пользовательском соглашении.",
+    "Оплата разовая, в рублях, на странице оплаты (СБП или карта). Условия возврата — в Пользовательском соглашении.",
 ]
 # добровольные пожертвования: фиксированные суммы, запросов не дают
 DONATIONS = {
@@ -75,6 +75,10 @@ ALL_OFFERS = {**PLANS, **DONATIONS}
 OPERATOR_NAME = (os.environ.get("OPERATOR_NAME") or "ИП Родионов Даниил Вадимович").strip()
 SUPPORT_EMAIL = (os.environ.get("SUPPORT_EMAIL") or "drodii198@gmail.com").strip()
 SUPPORT_TG = (os.environ.get("SUPPORT_TG") or "Snetlie").strip().lstrip("@")
+# онлайн-оплата через Platega: ключи берутся из личного кабинета и хранятся только в /etc/tarot.env
+PLATEGA_URL = "https://app.platega.io"
+PLATEGA_MERCHANT = os.environ.get("PLATEGA_MERCHANT_ID", "").strip()
+PLATEGA_SECRET = os.environ.get("PLATEGA_SECRET", "").strip()
 SHARE_MAX_BYTES = 700_000  # картинка расклада «поделиться» (JPEG)
 SHARE_DAILY_LIMIT = 20  # публикаций от одного человека в сутки
 SHARE_KEEP_DAYS = 90
@@ -211,14 +215,136 @@ def grant_plan(uid, plan_id, charge_id, total_kop):
             return False
         c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
                   (uid, now, plan["price"], "RUB", "paid", "telegram", f"{plan_id} {charge_id}"))
-        if plan_id in DONATIONS:
-            pass  # пожертвование: запросы не начисляются
-        elif plan["days"]:
-            c.execute("UPDATE users SET unlimited_until = MAX(unlimited_until, ?) + ? WHERE id=?",
-                      (now, plan["days"] * 86400, uid))
-        else:
-            c.execute("UPDATE users SET credits = credits + ? WHERE id=?", (plan["requests"], uid))
+        apply_offer(c, uid, plan_id, now)
     return True
+
+
+def apply_offer(c, uid, offer_id, now):
+    """Начисляет оплаченное: запросы или дни безлимита. Пожертвование ничего не начисляет."""
+    offer = ALL_OFFERS[offer_id]
+    if offer_id in DONATIONS:
+        return
+    if offer["days"]:
+        c.execute("UPDATE users SET unlimited_until = MAX(unlimited_until, ?) + ? WHERE id=?",
+                  (now, offer["days"] * 86400, uid))
+    else:
+        c.execute("UPDATE users SET credits = credits + ? WHERE id=?", (offer["requests"], uid))
+
+
+# ---------- Оплата через Platega ----------
+
+def platega_call(method, path, body=None):
+    req = urllib.request.Request(
+        PLATEGA_URL + path, method=method, data=json.dumps(body).encode() if body is not None else None,
+        headers={"X-MerchantId": PLATEGA_MERCHANT, "X-Secret": PLATEGA_SECRET,
+                 "Content-Type": "application/json", "User-Agent": "tarot-bot/1.0"})
+    try:
+        with urllib.request.urlopen(req, timeout=20) as r:
+            return json.load(r)
+    except urllib.error.HTTPError as e:
+        raise RuntimeError(f"Platega HTTP {e.code}: {e.read().decode(errors='replace')[:300]}") from None
+
+
+def start_payment(uid, offer_id):
+    """Создаёт платёж в Platega и возвращает ссылку на страницу оплаты."""
+    if not payments_ready():
+        raise ValueError(no_payment_text())
+    offer, now = ALL_OFFERS[offer_id], int(time.time())
+    with closing(db()) as c:
+        u = c.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
+        pending = c.execute("SELECT COUNT(*) FROM payments WHERE uid=? AND provider='platega' AND status='pending' AND ts>=?",
+                            (uid, now - 3600)).fetchone()[0]
+    if pending >= 10:
+        raise ValueError("Слишком много неоплаченных счетов. Оплатите один из созданных или подождите час.")
+    username = "@" + u["username"] if u and u["username"] else str(uid)
+    bot = bot_username()
+    res = platega_call("POST", "/v2/transaction/process", {
+        "paymentDetails": {"amount": offer["price"], "currency": "RUB"},
+        "description": f"{offer['title']}: «Ответы на ваши вопросы таро»",
+        "return": f"{WEBAPP_URL}/paid?ok=1", "failedUrl": f"{WEBAPP_URL}/paid?ok=0",
+        "payload": f"{offer_id}:{uid}", "orderId": f"{uid}-{now}",
+        "metadata": {
+            # по правилам Platega для магазина в Telegram: постоянный ID покупателя + домен telegram.org
+            "user_email": f"{uid}@telegram.org", "userId": str(uid), "userName": username,
+            "tg_bot_id": BOT_TOKEN.split(":")[0], "tg_bot_username": "@" + bot if bot else "",
+            "tg_id": str(uid), "tg_username": username}})
+    tx, url = res.get("transactionId"), res.get("url")
+    if not tx or not url:
+        raise RuntimeError(f"Platega: нет ссылки на оплату в ответе: {str(res)[:200]}")
+    with closing(db()) as c, c:
+        c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
+                  (uid, now, offer["price"], "RUB", "pending", "platega", f"{offer_id} {tx}"))
+    return url
+
+
+def confirm_platega(tx, amount=None):
+    """Зачисляет оплату один раз. Возвращает (uid, offer_id) при первом успешном зачислении, иначе None."""
+    now = int(time.time())
+    with closing(db()) as c, c:
+        row = c.execute("SELECT * FROM payments WHERE provider='platega' AND note LIKE ?", (f"% {tx}",)).fetchone()
+        if row is None:
+            print("platega: неизвестная транзакция", tx)
+            return None
+        offer_id = row["note"].split(" ")[0]
+        if offer_id not in ALL_OFFERS:
+            return None
+        if amount is not None and abs(float(amount) - float(row["amount"])) > 0.01:
+            print("platega: сумма не совпала", tx, amount, row["amount"])
+            notify_admin(f"⚠ Платёж {tx}: сумма в Platega ({amount}) не совпала с ожидаемой ({row['amount']}). Запросы не начислены, проверьте вручную.")
+            return None
+        # статус меняется одним условным запросом, поэтому повторный колбэк ничего не начислит второй раз
+        if c.execute("UPDATE payments SET status='paid', ts=? WHERE id=? AND status!='paid'", (now, row["id"])).rowcount != 1:
+            return None
+        apply_offer(c, row["uid"], offer_id, now)
+    return row["uid"], offer_id
+
+
+def platega_status(tx, status, amount=None):
+    """Обработка статуса платежа из колбэка или из проверки. Возвращает True, если оплата только что зачислена."""
+    if status == "CONFIRMED":
+        got = confirm_platega(tx, amount)
+        if got:
+            notify_paid(*got)
+            return True
+    elif status == "CANCELED":
+        with closing(db()) as c, c:
+            c.execute("UPDATE payments SET status='canceled' WHERE provider='platega' AND note LIKE ? AND status='pending'", (f"% {tx}",))
+    elif status == "CHARGEBACKED":
+        with closing(db()) as c, c:
+            c.execute("UPDATE payments SET status='chargeback' WHERE provider='platega' AND note LIKE ?", (f"% {tx}",))
+        notify_admin(f"⚠ Возврат платежа (chargeback) по транзакции {tx}. Проверьте в админке и в кабинете Platega.")
+    return False
+
+
+def notify_paid(uid, offer_id):
+    try:
+        if offer_id in DONATIONS:
+            tg("sendMessage", chat_id=uid, text="Спасибо за поддержку проекта! 💛")
+        else:
+            send_tariffs(uid, uid, f"Оплата прошла: «{PLANS[offer_id]['title']}» подключён. Спасибо!", check=False)
+    except Exception as e:  # noqa: BLE001
+        print("notify paid error:", e)
+
+
+_last_check = {}
+
+
+def check_pending(uid):
+    """Запасной путь, если колбэк не дошёл: спрашиваем у Platega статус неоплаченных счетов пользователя."""
+    now = time.time()
+    if not payments_ready() or now - _last_check.get(uid, 0) < 8:
+        return
+    _last_check[uid] = now
+    with closing(db()) as c:
+        rows = c.execute("SELECT note FROM payments WHERE uid=? AND provider='platega' AND status='pending' AND ts>=? ORDER BY ts DESC LIMIT 3",
+                         (uid, int(now) - 86400)).fetchall()
+    for r in rows:
+        tx = r["note"].split(" ")[-1]
+        try:
+            d = platega_call("GET", f"/transaction/{tx}")
+            platega_status(tx, d.get("status"), (d.get("paymentDetails") or {}).get("amount"))
+        except Exception as e:  # noqa: BLE001
+            print("platega check error:", e)
 
 
 # ---------- Тарифы: тексты и юридические страницы ----------
@@ -622,7 +748,9 @@ def send_doc(chat_id, name):
     tg("sendMessage", chat_id=chat_id, text=title, reply_markup={"inline_keyboard": [[{"text": "Открыть", "url": f"{WEBAPP_URL}/{name}"}]]})
 
 
-def send_tariffs(chat_id, uid, intro=""):
+def send_tariffs(chat_id, uid, intro="", check=True):
+    if check:
+        check_pending(uid)  # если колбэк оплаты не дошёл, подхватываем оплату здесь
     q = quota(uid)
     if q["unlimited_until"] > time.time():
         status = "безлимит активен до " + time.strftime("%d.%m.%Y", time.localtime(q["unlimited_until"]))
@@ -635,7 +763,7 @@ def send_tariffs(chat_id, uid, intro=""):
 
 
 def payments_ready():
-    return bool(os.environ.get("PAYMENT_PROVIDER_TOKEN", ""))
+    return bool(PLATEGA_MERCHANT and PLATEGA_SECRET and WEBAPP_URL)
 
 
 def contact_url():
@@ -648,25 +776,29 @@ def no_payment_text():
     return text + (f"\nДля покупки пока напишите @{SUPPORT_TG}." if SUPPORT_TG else "")
 
 
-def invoice_fields(plan_id):
-    token = os.environ.get("PAYMENT_PROVIDER_TOKEN", "")
-    if not token:
-        raise ValueError(no_payment_text())
-    plan = ALL_OFFERS[plan_id]
-    return {"title": plan["title"], "description": plan["description"], "payload": plan_id,
-            "provider_token": token, "currency": "RUB", "prices": [{"label": plan["title"], "amount": plan["price"] * 100}]}
-
-
-def send_invoice(chat_id, plan_id):
+def send_payment(chat_id, uid, offer_id):
+    offer = ALL_OFFERS[offer_id]
     try:
-        tg("sendInvoice", chat_id=chat_id, **invoice_fields(plan_id))
+        url = start_payment(uid, offer_id)
     except ValueError as e:
         kwargs = {"reply_markup": {"inline_keyboard": [[{"text": f"✉ Написать @{SUPPORT_TG}", "url": contact_url()}]]}} if SUPPORT_TG else {}
-        tg("sendMessage", chat_id=chat_id, text=str(e), **kwargs)
+        return tg("sendMessage", chat_id=chat_id, text=str(e), **kwargs)
+    except Exception as e:  # noqa: BLE001
+        print("payment error:", e)
+        return tg("sendMessage", chat_id=chat_id, text="Не удалось создать платёж. Попробуйте позже" +
+                  (f" или напишите @{SUPPORT_TG}." if SUPPORT_TG else "."))
+    tg("sendMessage", chat_id=chat_id, reply_markup={"inline_keyboard": [[{"text": f"💳 Оплатить {offer['price']} ₽", "url": url}]]},
+       text=f"«{offer['title']}» — {offer['price']} ₽.\nНажмите кнопку: откроется страница оплаты (СБП или банковская карта). "
+            "После оплаты бот пришлёт подтверждение.")
+
+
+def last_paid(uid):
+    with closing(db()) as c:
+        return c.execute("SELECT COALESCE(MAX(ts), 0) FROM payments WHERE uid=? AND status='paid'", (uid,)).fetchone()[0]
 
 
 def quota_info(uid):
-    return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES, "bot": BOT_USERNAME,
+    return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES, "bot": BOT_USERNAME, "last_paid": last_paid(uid),
             "donations": [{"id": k, "price": p["price"]} for k, p in DONATIONS.items()],
             "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"],
                        "detail": plan_detail(p)} for k, p in PLANS.items()]}
@@ -680,7 +812,7 @@ def handle_callback(cq):
     elif data == "support":
         send_support(chat_id)
     elif data.startswith("buy:") and data[4:] in ALL_OFFERS:
-        send_invoice(chat_id, data[4:])
+        send_payment(chat_id, uid, data[4:])
 
 
 def handle_payment(chat_id, uid, pay):
@@ -1063,6 +1195,23 @@ class Handler(BaseHTTPRequestHandler):
             self.end_headers()
             self.wfile.write(body)
             return
+        if path == "/paid":
+            ok = "ok=1" in (urllib.parse.urlparse(self.path).query or "")
+            bot = bot_username()
+            link = f"https://t.me/{bot}" if bot else "/"
+            title, text = ("Спасибо!", "Если оплата прошла, запросы появятся в течение минуты. Вернитесь в Telegram.") if ok else \
+                ("Оплата не прошла", "Платёж не завершён. Вернитесь в Telegram и попробуйте ещё раз или напишите в поддержку.")
+            body = f"""<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{title}</title><style>body{{margin:0;min-height:100vh;display:grid;place-items:center;background:#0a0916;color:#f4f0fb;font:16px/1.5 -apple-system,"Segoe UI",Roboto,sans-serif;text-align:center}}
+main{{max-width:420px;padding:24px}}h1{{font:700 28px Georgia,serif;color:#f8e6b0}}p{{color:#9b96b6}}
+a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;background:linear-gradient(135deg,#f8e6b0,#e6c675);color:#251b06;font-weight:600;text-decoration:none}}</style>
+</head><body><main><h1>{title}</h1><p>{text}</p><a href="{htmllib.escape(link)}">Вернуться в Telegram</a></main></body></html>""".encode()
+            self.send_response(200)
+            self.send_header("Content-Type", "text/html; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+            return
         if path in ("/", "/index.html", "/admin", "/admin.html"):
             body = (ROOT / "docs" / ("admin.html" if path in ("/admin", "/admin.html") else "index.html")).read_bytes()
             self.send_response(200)
@@ -1073,7 +1222,26 @@ class Handler(BaseHTTPRequestHandler):
             return
         self.send_error(404)
 
+    def platega_callback(self):
+        """Platega присылает сюда статус платежа. Подлинность проверяем по X-MerchantId и X-Secret."""
+        h = self.headers
+        if not payments_ready() or not (hmac.compare_digest(h.get("X-MerchantId", "").encode(), PLATEGA_MERCHANT.encode()) and
+                                        hmac.compare_digest(h.get("X-Secret", "").encode(), PLATEGA_SECRET.encode())):
+            return self.reply_json(401, {"error": "forbidden"})
+        try:
+            data = json.loads(self.rfile.read(min(int(h.get("Content-Length", 0)), 100_000)) or b"{}")
+        except ValueError:
+            return self.reply_json(400, {"error": "bad json"})
+        try:
+            platega_status(str(data.get("id", "")), data.get("status"), data.get("amount"))
+        except Exception as e:  # noqa: BLE001
+            print("platega callback error:", e)
+            return self.reply_json(500, {"error": "error"})  # Platega повторит запрос позже
+        self.reply_json(200, {"ok": True})
+
     def do_POST(self):
+        if urllib.parse.urlparse(self.path).path == "/api/platega/callback":
+            return self.platega_callback()
         user = verify_init_data(self.headers.get("X-Init-Data", ""))
         if not user:
             return self.reply_json(401, {"error": "Откройте приложение из Telegram."})
@@ -1109,15 +1277,20 @@ class Handler(BaseHTTPRequestHandler):
             return self.send_error(404)
         touch_user(user, body.get("birth_date"))
         if path == "/api/quota":
+            check_pending(uid)
             return self.reply_json(200, quota_info(uid))
         if path == "/api/invoice":
             if body.get("plan") not in ALL_OFFERS:
                 return self.reply_json(400, {"error": "Неизвестный тариф."})
             try:
-                link = tg("createInvoiceLink", **invoice_fields(body["plan"]))["result"]
+                url = start_payment(uid, body["plan"])
             except ValueError as e:
                 return self.reply_json(400, {"error": str(e), "contact": contact_url(), "contact_name": SUPPORT_TG})
-            return self.reply_json(200, {"url": link})
+            except Exception as e:  # noqa: BLE001
+                print("payment error:", e)
+                return self.reply_json(502, {"error": "Не удалось создать платёж. Попробуйте позже" +
+                                             (f" или напишите @{SUPPORT_TG}." if SUPPORT_TG else ".")})
+            return self.reply_json(200, {"url": url})
         if path == "/api/share":
             try:
                 token = save_share(uid, body.get("image", ""), body.get("title", ""), body.get("text", ""))
