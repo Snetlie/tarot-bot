@@ -146,7 +146,7 @@ def init_db():
         """)
         # колонки тарифов появились позже, добавляем их в уже существующую базу
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
-        for name in ("free_used", "credits", "unlimited_until"):
+        for name in ("free_used", "credits", "unlimited_until", "natal_credits"):
             if name not in cols:
                 c.execute(f"ALTER TABLE users ADD COLUMN {name} INTEGER DEFAULT 0")
         # оценка ответа: 1 — полезно, -1 — не очень, 0 — не оценено
@@ -779,16 +779,62 @@ def parse_natal_input(body):
             "place": place, "lat": lat, "lon": lon, "tz": tz}
 
 
-def create_natal_order(uid, body):
+def natal_credits(uid):
+    """Сколько натальных карт подарено человеку (выдаёт администратор), их оплачивать не нужно."""
+    with closing(db()) as c:
+        row = c.execute("SELECT natal_credits FROM users WHERE id=?", (uid,)).fetchone()
+    return (row["natal_credits"] or 0) if row else 0
+
+
+def create_natal_order(uid, body, free=False):
+    """free=True: заказ на подарочную карту, списывает одну подаренную карту и сразу идёт в работу."""
     p = parse_natal_input(body)
     now = int(time.time())
     with closing(db()) as c, c:
-        if c.execute("SELECT COUNT(*) FROM natal_orders WHERE uid=? AND status='new' AND ts>=?", (uid, now - 86400)).fetchone()[0] >= 10:
+        if free:
+            if c.execute("UPDATE users SET natal_credits = natal_credits - 1 WHERE id=? AND natal_credits > 0", (uid,)).rowcount != 1:
+                raise ValueError("Подаренных карт не осталось.")
+        elif c.execute("SELECT COUNT(*) FROM natal_orders WHERE uid=? AND status='new' AND ts>=?", (uid, now - 86400)).fetchone()[0] >= 10:
             raise ValueError("Слишком много неоплаченных заказов. Оплатите один из созданных или подождите до завтра.")
-        cur = c.execute("INSERT INTO natal_orders (uid, ts, name, birth_date, birth_time, place, lat, lon, tz, status) "
-                        "VALUES (?,?,?,?,?,?,?,?,?, 'new')",
-                        (uid, now, p["name"], p["birth_date"], p["birth_time"], p["place"], p["lat"], p["lon"], p["tz"]))
+        cur = c.execute("INSERT INTO natal_orders (uid, ts, name, birth_date, birth_time, place, lat, lon, tz, status, paid_ts) "
+                        "VALUES (?,?,?,?,?,?,?,?,?,?,?)",
+                        (uid, now, p["name"], p["birth_date"], p["birth_time"], p["place"], p["lat"], p["lon"], p["tz"],
+                         "paid" if free else "new", now if free else None))
     return cur.lastrowid
+
+
+GIVE_LABELS = {"credits": "запросов", "days": "дн. безлимита", "natal": "натальных карт", "unlimited_off": "снять безлимит"}
+
+
+def admin_give(uid, kind, amount):
+    """Выдача из админки: запросы, дни безлимита, подарочные натальные карты. Каждая выдача пишется в оплаты (статус gift)."""
+    now, amount = int(time.time()), int(amount or 0)
+    limits = {"credits": (1, 1000), "days": (1, 3650), "natal": (1, 20), "unlimited_off": (0, 0)}
+    if kind not in limits or not (limits[kind][0] <= amount <= limits[kind][1]):
+        raise ValueError("Неверный вид или количество.")
+    with closing(db()) as c, c:
+        if not c.execute("SELECT 1 FROM users WHERE id=?", (uid,)).fetchone():
+            raise LookupError("Пользователь не найден. Пусть сначала отправит боту /start.")
+        if kind == "credits":
+            c.execute("UPDATE users SET credits = credits + ? WHERE id=?", (amount, uid))
+        elif kind == "days":
+            c.execute("UPDATE users SET unlimited_until = MAX(unlimited_until, ?) + ? WHERE id=?", (now, amount * 86400, uid))
+        elif kind == "natal":
+            c.execute("UPDATE users SET natal_credits = natal_credits + ? WHERE id=?", (amount, uid))
+        else:
+            c.execute("UPDATE users SET unlimited_until = 0 WHERE id=?", (uid,))
+        c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
+                  (uid, now, 0, "RUB", "gift", "admin", f"выдано: {amount} {GIVE_LABELS[kind]}" if amount else "безлимит снят"))
+    texts = {"credits": f"🎁 Вам подарили {amount} {plural(amount, 'запрос', 'запроса', 'запросов')} к таро. Они уже на вашем счёте.",
+             "days": f"🎁 Вам подарили безлимит на {amount} {plural(amount, 'день', 'дня', 'дней')}. Он уже действует.",
+             "natal": f"🎁 Вам подарили натальную карту ({amount} шт.)! Откройте раздел «Натальная карта», введите данные рождения, и карта придёт бесплатно."}
+    if kind in texts:
+        kwargs = {"reply_markup": {"inline_keyboard": [[{"text": "🪐 Получить карту" if kind == "natal" else "🔮 Открыть таро",
+                                                          "web_app": {"url": WEBAPP_URL + ("/?screen=natal" if kind == "natal" else "")}}]]}} if WEBAPP_URL else {}
+        try:
+            tg("sendMessage", chat_id=uid, text=texts[kind], **kwargs)
+        except Exception as e:  # noqa: BLE001
+            print("gift notify error:", e)
 
 
 def natal_row(uid, oid):
@@ -970,7 +1016,9 @@ def admin_user(uid):
         u = c.execute("SELECT * FROM users WHERE id=?", (uid,)).fetchone()
         rs = [dict(r) for r in c.execute("SELECT * FROM readings WHERE uid=? ORDER BY ts DESC LIMIT 30", (uid,))]
         ps = [dict(r) for r in c.execute("SELECT * FROM payments WHERE uid=? ORDER BY ts DESC LIMIT 30", (uid,))]
-    return {"user": dict(u) if u else None, "readings": rs, "payments": ps, "quota": quota(uid)}
+    with closing(db()) as c:
+        natal = [dict(r) for r in c.execute("SELECT id, ts, status, place, birth_date FROM natal_orders WHERE uid=? ORDER BY id DESC LIMIT 10", (uid,))]
+    return {"user": dict(u) if u else None, "readings": rs, "payments": ps, "quota": {**quota(uid), "natal_credits": natal_credits(uid)}, "natal": natal}
 
 
 # ---------- Telegram Bot API ----------
@@ -1143,6 +1191,7 @@ def last_paid(uid):
 
 def quota_info(uid):
     return {**quota(uid), "free_total": FREE_REQUESTS, "rules": RULES, "bot": BOT_USERNAME, "last_paid": last_paid(uid),
+            "natal_credits": natal_credits(uid),
             "donations": [{"id": k, "price": p["price"]} for k, p in DONATIONS.items()],
             "plans": [{"id": k, "title": p["title"], "description": p["description"], "price": p["price"],
                        "detail": plan_detail(p)} for k, p in PLANS.items()]}
@@ -1645,10 +1694,14 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
                 with state_lock:
                     birth = profiles.get(uid, "")
                 return self.reply_json(200, {"price": NATAL["price"], "birth_date": birth, "orders": natal_list(uid),
-                                             "ready": payments_ready()})
+                                             "ready": payments_ready(), "natal_credits": natal_credits(uid)})
             if path == "/api/natal/place":
                 return self.reply_json(200, {"places": geocode(uid, body.get("q", ""))})
             if path == "/api/natal/order":
+                if natal_credits(uid) > 0:  # подарочная карта: платить не нужно
+                    oid = create_natal_order(uid, body, free=True)
+                    natal_kick(oid)
+                    return self.reply_json(200, {"id": oid, "free": True})
                 if not payments_ready():  # без онлайн-оплаты заказ не создаём
                     return self.reply_json(400, {"error": no_payment_text(), "contact": contact_url(), "contact_name": SUPPORT_TG})
                 return pay(create_natal_order(uid, body))
@@ -1696,6 +1749,15 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
                 return self.reply_json(200, platega_state())
             if path == "/api/admin/user":
                 return self.reply_json(200, admin_user(int(body.get("id", 0))))
+            if path == "/api/admin/give":
+                try:
+                    target = int(body.get("id", 0))
+                    admin_give(target, str(body.get("kind", "")), body.get("amount", 0))
+                except (ValueError, TypeError) as e:
+                    return self.reply_json(400, {"error": str(e) or "Неверные данные."})
+                except LookupError as e:
+                    return self.reply_json(404, {"error": str(e)})
+                return self.reply_json(200, admin_user(target))
             if path == "/api/admin/ticket":
                 d = admin_ticket(int(body.get("id", 0)))
                 return self.reply_json(200 if d else 404, d or {"error": "Обращение не найдено."})

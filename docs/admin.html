@@ -67,6 +67,16 @@ textarea.ta { width:100%; height:92px; margin-top:12px; background:rgba(0,0,0,.2
 .btn.sec { background:var(--glass2); color:var(--text); font-weight:500; }
 .btn:disabled { opacity:.4; }
 .tab b { color: var(--rose); font-weight:600; }
+.give { display:grid; grid-template-columns: 1fr 1fr; gap:8px; margin: 6px 0 10px; }
+.gv { padding:11px 8px; border-radius:14px; cursor:pointer; font:500 13.5px var(--sans); color:var(--text); background:var(--glass2); border:1px solid var(--line); }
+.gv:active { background: rgba(230,198,117,.2); }
+.gv:disabled { opacity:.4; }
+.gv.gold { color:#251b06; border:0; background:linear-gradient(135deg,var(--gold2),var(--gold)); font-weight:600; grid-column: 1 / -1; }
+.giveown { display:flex; gap:8px; margin-bottom:6px; }
+.giveown input { flex:1; min-width:0; background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:14px; padding:11px 14px; color:var(--text); font:16px var(--sans); outline:none; }
+.giveown .gv { flex:none; }
+.gnote { margin:8px 0; padding:9px 12px; border-radius:12px; font-size:13px; color:var(--green); background:rgba(111,227,165,.1); }
+.gnote.err { color:var(--rose); background:rgba(255,148,168,.1); }
 input.tx { width:100%; background:rgba(0,0,0,.25); border:1px solid var(--line); border-radius:14px; padding:12px 14px; color:var(--text); font:16px var(--sans); outline:none; margin-top:8px; }
 .lbl { display:block; margin-top:12px; font-size:12px; color:var(--muted); }
 .note { margin-top:10px; font-size:13px; color:var(--muted); line-height:1.45; }
@@ -253,11 +263,40 @@ function renderPays() {
     m.appendChild(el('b', '', money(p.amount, p.currency)));
     m.appendChild(el('small', '', (p.first_name || (p.username ? '@' + p.username : 'ID ' + p.uid)) + ' · ' + fmtDate(p.ts) + (p.provider ? ' · ' + p.provider : '')));
     r.appendChild(m);
-    const st = el('span', 'pill ' + (p.status === 'paid' ? '' : p.status === 'pending' ? 'p' : 'w'), p.status === 'paid' ? 'оплачено' : p.status === 'pending' ? 'ожидает' : p.status);
+    const st = el('span', 'pill ' + (p.status === 'paid' || p.status === 'gift' ? '' : p.status === 'pending' ? 'p' : 'w'),
+      {paid: 'оплачено', pending: 'ожидает', gift: 'выдано', canceled: 'отменён', chargeback: 'возврат'}[p.status] || p.status);
+    if (p.status === 'gift' && p.note) m.appendChild(el('small', '', p.note));
     r.appendChild(st); r.onclick = () => openUser(p.uid); box.appendChild(r);
   });
 }
-async function openUser(id) {
+function ask(text, ok) {
+  try { if (tg.showConfirm) { tg.showConfirm(text, yes => yes && ok()); return; } } catch (e) {}
+  if (confirm(text)) ok();
+}
+async function giveTo(id, kind, amount, label) {
+  const sh = $('sheet');
+  try { await api('/api/admin/give', {id, kind, amount}); await load(); openUser(id, 'Готово: ' + label + '. Человеку отправлено сообщение в Telegram.'); }
+  catch (e) { const n = sh.querySelector('.gnote'); if (n) { n.textContent = e.message; n.className = 'gnote err'; } else alert(e.message); }
+}
+function giveBlock(id, sh, note) {
+  sh.appendChild(el('h3', '', 'Выдать')); sh.lastChild.style.cssText = 'font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--gold);margin:18px 0 4px';
+  const n = el('div', 'gnote' + (note && note.startsWith('Ошибка') ? ' err' : ''), note || ''); if (!note) n.classList.add('hidden'); sh.appendChild(n);
+  const box = el('div', 'give');
+  const btn = (text, kind, amount, label, cls) => {
+    const b = el('button', 'gv' + (cls ? ' ' + cls : ''), text); b.type = 'button';
+    b.onclick = () => ask('Выдать: ' + label + '?', () => giveTo(id, kind, amount, label)); box.appendChild(b);
+  };
+  btn('🪐 Подарить натальную карту', 'natal', 1, 'натальная карта (бесплатная)', 'gold');
+  btn('+5 запросов', 'credits', 5, '5 запросов'); btn('+10 запросов', 'credits', 10, '10 запросов');
+  btn('+30 запросов', 'credits', 30, '30 запросов'); btn('Безлимит 7 дней', 'days', 7, 'безлимит на 7 дней');
+  btn('Безлимит 30 дней', 'days', 30, 'безлимит на 30 дней'); btn('Снять безлимит', 'unlimited_off', 0, 'снять безлимит');
+  sh.appendChild(box);
+  const own = el('div', 'giveown'), inp = document.createElement('input'), go = el('button', 'gv', 'Запросы'); go.type = 'button';
+  inp.type = 'number'; inp.min = 1; inp.max = 1000; inp.placeholder = 'Своё число запросов';
+  go.onclick = () => { const v = parseInt(inp.value, 10); if (!(v >= 1 && v <= 1000)) { n.textContent = 'Введите число от 1 до 1000.'; n.className = 'gnote err'; return; } ask('Выдать запросов: ' + v + '?', () => giveTo(id, 'credits', v, v + ' запросов')); };
+  own.appendChild(inp); own.appendChild(go); sh.appendChild(own);
+}
+async function openUser(id, note) {
   $('bg').classList.remove('hidden'); const sh = $('sheet'); sh.innerHTML = ''; sh.appendChild(el('div', 'empty', 'Загрузка…'));
   try {
     const d = await api('/api/admin/user', {id}); const u = d.user; sh.innerHTML = '';
@@ -267,8 +306,14 @@ async function openUser(id) {
     const plan = q.unlimited_until > Date.now() / 1000 ? 'безлимит до ' + fmtDate(q.unlimited_until).slice(0, 8) : 'без безлимита';
     [['ID', u.id], ['Username', u.username ? '@' + u.username : '—'], ['Язык', u.language || '—'], ['Дата рождения', u.birth_date ? u.birth_date.split('-').reverse().join('.') : '—'],
      ['Первый визит', fmtDate(u.first_seen)], ['Последний визит', fmtDate(u.last_seen)], ['Раскладов', u.readings],
-     ['Бесплатных осталось', q.free], ['Купленных осталось', q.credits], ['Тариф', plan]].forEach(([k, v]) => { kv.appendChild(el('span', '', k)); kv.appendChild(el('div', '', v)); });
+     ['Бесплатных осталось', q.free], ['Купленных осталось', q.credits], ['Тариф', plan], ['Подаренных карт', q.natal_credits || 0]].forEach(([k, v]) => { kv.appendChild(el('span', '', k)); kv.appendChild(el('div', '', v)); });
     sh.appendChild(kv);
+    giveBlock(id, sh, note);
+    if ((d.natal || []).length) {
+      sh.appendChild(el('h3', '', 'Натальные карты')); sh.lastChild.style.cssText = 'font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--gold);margin:18px 0 4px';
+      const NS = {new: 'ждёт оплаты', paid: 'считается', working: 'считается', ready: 'готова'};
+      d.natal.forEach(x => sh.appendChild(el('div', 'rd', '№' + x.id + ' · ' + x.place + ' · ' + x.birth_date.split('-').reverse().join('.') + ' · ' + (NS[x.status] || x.status))));
+    }
     if (u.username) { const a = el('a', 'more', 'Открыть в Telegram'); a.href = 'https://t.me/' + u.username; a.style.cssText = 'display:block;text-align:center;text-decoration:none'; a.onclick = e => { e.preventDefault(); tg.openTelegramLink(a.href); }; sh.appendChild(a); }
     sh.appendChild(el('h3', '', 'Оплаты')); sh.lastChild.style.cssText = 'font:600 12px var(--sans);letter-spacing:.09em;text-transform:uppercase;color:var(--gold);margin:18px 0 4px';
     if (!d.payments.length) sh.appendChild(el('small', '', 'Нет оплат')); d.payments.forEach(p => sh.appendChild(el('div', 'rd', money(p.amount, p.currency) + ' · ' + p.status + ' · ' + fmtDate(p.ts))));

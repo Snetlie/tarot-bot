@@ -313,6 +313,30 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
 .reply button:disabled { opacity: .4; }
 
 /* ---------- натальная карта ---------- */
+.natal-ban { position: relative; width: 100%; display: flex; align-items: center; gap: 12px; margin: 4px 0 10px; padding: 14px 14px 14px 12px; cursor: pointer; text-align: left;
+  color: var(--text); border-radius: 20px; overflow: hidden; isolation: isolate; border: 1.5px solid transparent;
+  background: linear-gradient(135deg, rgba(139,108,240,.55), rgba(70,40,150,.55) 55%, rgba(230,198,117,.28)) padding-box,
+    linear-gradient(120deg, #f8e6b0, #8b6cf0, #e6c675, #8b6cf0, #f8e6b0) border-box;
+  background-size: 100% 100%, 300% 100%; animation: nb-border 6s linear infinite;
+  box-shadow: 0 8px 26px rgba(139,108,240,.38), 0 0 22px rgba(230,198,117,.16); transition: transform .15s; }
+.natal-ban:active { transform: scale(.985); }
+.natal-ban::after { content: ""; position: absolute; inset: 0; z-index: -1; transform: translateX(-120%);
+  background: linear-gradient(110deg, transparent 38%, rgba(255,255,255,.2) 50%, transparent 62%); animation: nb-shine 5s ease-in-out infinite; }
+@keyframes nb-border { to { background-position: 0 0, 300% 0; } }
+@keyframes nb-shine { 0%, 55% { transform: translateX(-120%); } 85%, 100% { transform: translateX(120%); } }
+.nb-orb { flex: none; width: 46px; height: 46px; display: grid; place-items: center; font-size: 26px; border-radius: 50%;
+  background: radial-gradient(circle at 35% 30%, rgba(248,230,176,.5), rgba(139,108,240,.4) 70%); box-shadow: 0 0 16px rgba(230,198,117,.45); animation: nb-float 3.4s ease-in-out infinite; }
+@keyframes nb-float { 50% { transform: translateY(-3px) rotate(8deg); } }
+.nb-txt { flex: 1; min-width: 0; }
+.nb-txt em { display: inline-block; margin-bottom: 3px; padding: 1px 8px; border-radius: 99px; font: 700 10px var(--sans); font-style: normal; letter-spacing: .08em; text-transform: uppercase;
+  color: #251b06; background: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.nb-txt b { display: block; font: 700 19px/1.1 var(--serif); color: var(--gold2); }
+.nb-txt small { display: block; margin-top: 2px; font-size: 12px; line-height: 1.3; color: rgba(244,240,251,.78); }
+.nb-price { flex: none; text-align: center; padding: 8px 10px; border-radius: 14px; background: rgba(0,0,0,.28); border: 1px solid rgba(230,198,117,.5); }
+.nb-price b { display: block; font: 700 17px var(--sans); color: var(--gold2); }
+.nb-price small { display: block; font-size: 11px; color: var(--muted); }
+.natal-ban.gift .nb-price { background: linear-gradient(135deg, var(--gold2), var(--gold)); border-color: transparent; }
+.natal-ban.gift .nb-price b, .natal-ban.gift .nb-price small { color: #251b06; }
 #natalSheet { max-height: 92vh; }
 .nt-lead { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; color: var(--muted); }
 .nt-list { margin: 0 0 12px; padding-left: 18px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
@@ -433,6 +457,11 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
 </head>
 <body>
 <main>
+  <button class="natal-ban" id="natalBan" type="button" aria-label="Натальная карта">
+    <span class="nb-orb" aria-hidden="true">🪐</span>
+    <span class="nb-txt"><em>Новое</em><b>Натальная карта</b><small>Что говорят звёзды о вашем характере, любви и деньгах</small></span>
+    <span class="nb-price"><b>399 ₽</b><small>узнать ›</small></span>
+  </button>
   <button class="plash" id="planBtn" type="button"><span class="ic" id="plashIc">💳</span><span><b id="plashTitle">Тарифы</b><small id="plashSub">Безлимит и пакеты запросов</small></span><span class="chev">›</span></button>
   <div class="quick-links">
     <button class="qlink" id="supBtn" type="button">🛟 Поддержка</button>
@@ -1087,8 +1116,15 @@ function renderPlans(q) {
     $('plans').appendChild(b);
   });
 }
+function setNatalGift(n) {
+  const b = $('natalBan'); if (!b) return;
+  b.classList.toggle('gift', n > 0);
+  b.querySelector('.nb-price b').textContent = n > 0 ? '🎁 Бесплатно' : '399 ₽';
+  b.querySelector('.nb-price small').textContent = n > 0 ? 'получить ›' : 'узнать ›';
+  b.querySelector('.nb-txt small').textContent = n > 0 ? 'Вам подарили натальную карту: введите данные рождения и получите её' : 'Что говорят звёзды о вашем характере, любви и деньгах';
+}
 async function loadQuota() {
-  try { const q = await api('/api/quota', {}); botName = q.bot || ''; renderPlans(q); }
+  try { const q = await api('/api/quota', {}); botName = q.bot || ''; setNatalGift(q.natal_credits || 0); renderPlans(q); }
   catch (e) { $('sheetNote').textContent = e.message; }
 }
 function openPlans(note) {
@@ -1319,8 +1355,8 @@ function ntForm(note) {
   ['Характер, эмоции и внутренний мир', 'Любовь и отношения', 'Работа, деньги и таланты', 'Сильные стороны, зоны роста и совет на ближайшее время']
     .forEach(t => ul.appendChild(node('li', '', t)));
   body.appendChild(ul);
-  const price = ntInfo.price || 399;
-  body.appendChild(node('span', 'nt-price', price + ' ₽ · разовая оплата, без подписки'));
+  const price = ntInfo.price || 399, gift = (ntInfo.natal_credits || 0) > 0;
+  body.appendChild(node('span', 'nt-price', gift ? '🎁 Вам подарили эту карту: оплата не нужна' : price + ' ₽ · разовая оплата, без подписки'));
   const form = node('div', 'sup-form');
   const mk = (tag, attrs) => Object.assign(document.createElement(tag), attrs);
   const name = mk('input', {maxLength: 40, placeholder: 'Имя (необязательно)', value: store.get('nt_name')});
@@ -1333,7 +1369,7 @@ function ntForm(note) {
   const found = node('div', 'nt-found hidden'), picked = node('div', 'nt-picked hidden');
   picked.appendChild(document.createElement('span'));
   const change = mk('button', {type: 'button', textContent: 'изменить'}); picked.appendChild(change);
-  const go = mk('button', {type: 'button', className: 'sup-send', textContent: 'Оплатить ' + price + ' ₽ и получить карту', disabled: true});
+  const go = mk('button', {type: 'button', className: 'sup-send', textContent: gift ? 'Получить карту бесплатно' : 'Оплатить ' + price + ' ₽ и получить карту', disabled: true});
   const msg = node('p', 'sheet-note', note || '');
   const check = () => { go.disabled = !(date.value && ntPlace && (unk.checked || time.value)); };
   [['Имя', name], ['Дата рождения', date], ['Время рождения', time]].forEach(([l, el]) => { form.appendChild(node('label', 'nt-lbl', l)); form.appendChild(el); });
@@ -1377,7 +1413,8 @@ function ntForm(note) {
     try {
       const r = await api('/api/natal/order', {name: name.value.trim(), birth_date: date.value, birth_time: unk.checked ? '' : time.value,
         place: ntPlace.label, lat: ntPlace.lat, lon: ntPlace.lon, tz: ntPlace.tz});
-      ntLink(r.url); ntWait(r.id, r.url);
+      if (r.free) { setNatalGift(Math.max((ntInfo.natal_credits || 1) - 1, 0)); ntWait(r.id, ''); }
+      else { ntLink(r.url); ntWait(r.id, r.url); }
     } catch (e) { ntError(msg, e); go.disabled = false; }
   };
   const orders = ntInfo.orders || [];
@@ -1504,7 +1541,7 @@ function ntShow(o) {
   back.onclick = () => openNatal(); body.appendChild(back);
   $('natalSheet').scrollTop = 0;
 }
-$('natalBtn').onclick = () => openNatal();
+$('natalBtn').onclick = $('natalBan').onclick = () => openNatal();
 $('ntClose').onclick = closePlans;
 function select(id, quiet) {
   const s = spreadList.find(x => x.id === id); if (!s) return;
