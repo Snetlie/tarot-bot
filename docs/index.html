@@ -364,20 +364,66 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
 .nt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-bottom: 8px; padding: 12px 14px; text-align: left; cursor: pointer;
   color: var(--text); background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 16px; font: 500 14px var(--sans); }
 .nt-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
-.nt-wheel { width: 100%; max-width: 340px; margin: 8px auto 4px; display: block; }
-.nt-head { margin: 4px 0 2px; font-size: 13px; color: var(--muted); text-align: center; }
-.nt-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
-.nt-trio div { padding: 10px 6px; text-align: center; border-radius: 14px; background: rgba(230,198,117,.08); border: 1px solid rgba(230,198,117,.3); }
-.nt-trio small { display: block; font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
-.nt-trio b { display: block; margin-top: 2px; font: 600 15px var(--sans); color: var(--gold2); }
-.nt-summary { margin: 12px 0; padding: 12px 14px; border-radius: 14px; font-size: 15px; line-height: 1.55; background: rgba(139,108,240,.16); border: 1px solid rgba(139,108,240,.4); }
-.nt-sec { margin: 16px 0; }
-.nt-sec h4 { margin: 0 0 6px; font: 600 12px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--gold); }
-.nt-sec p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.6; }
-.nt-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
-.nt-tbl td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
-.nt-tbl td:first-child { color: var(--muted); }
-.nt-tbl td:last-child { text-align: right; color: var(--muted); }
+.nt-hero { position: relative; margin: 6px 0 14px; padding: 14px 12px 12px; border-radius: 22px; overflow: hidden; isolation: isolate; border: 1.5px solid transparent;
+  background: radial-gradient(120% 70% at 50% 0%, rgba(139,108,240,.5), rgba(30,18,80,.65) 60%, rgba(14,10,36,.9)) padding-box,
+    linear-gradient(120deg, #f8e6b0, #8b6cf0, #e6c675, #8b6cf0, #f8e6b0) border-box; background-size: 100% 100%, 300% 100%; animation: nb-border 8s linear infinite;
+  box-shadow: 0 10px 30px rgba(139,108,240,.35), 0 0 24px rgba(230,198,117,.12); }
+.nt-hero::after { content: ""; position: absolute; inset: 0; z-index: -1; transform: translateX(-120%);
+  background: linear-gradient(110deg, transparent 40%, rgba(255,255,255,.12) 50%, transparent 60%); animation: nb-shine 7s ease-in-out infinite; }
+.nt-who { text-align: center; }
+.nt-who b { display: block; font: 700 22px/1.1 var(--serif); color: var(--gold2); }
+.nt-who small { display: block; margin-top: 3px; font-size: 12.5px; color: rgba(244,240,251,.72); }
+.nt-wheel { width: 100%; max-width: 340px; margin: 6px auto 2px; display: block; filter: drop-shadow(0 0 14px rgba(139,108,240,.45)); animation: nt-wheel-in 1s var(--ease) both; }
+@keyframes nt-wheel-in { from { opacity: 0; transform: rotate(-22deg) scale(.9); } }
+.nt-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 10px 0 12px; }
+.nt-trio div { padding: 10px 4px 9px; text-align: center; border-radius: 16px; border: 1px solid rgba(230,198,117,.4);
+  background: linear-gradient(160deg, rgba(248,230,176,.16), rgba(139,108,240,.2)); }
+.nt-trio i { display: block; font: normal 22px/1 var(--sans); }
+.nt-trio small { display: block; margin-top: 4px; font-size: 10.5px; color: var(--muted); letter-spacing: .07em; text-transform: uppercase; }
+.nt-trio b { display: block; margin-top: 1px; font: 600 14.5px var(--sans); color: var(--gold2); }
+.nt-trio em { display: block; font: normal 11.5px var(--sans); color: rgba(244,240,251,.6); }
+.nt-bal { display: grid; gap: 7px; }
+.nt-bal div { display: grid; grid-template-columns: 78px 1fr 18px; align-items: center; gap: 8px; font-size: 12.5px; color: rgba(244,240,251,.82); }
+.nt-bal em { font-style: normal; }
+.nt-bal span { height: 8px; border-radius: 99px; background: rgba(255,255,255,.08); overflow: hidden; }
+.nt-bal span i { display: block; height: 100%; border-radius: 99px; transition: width .9s var(--ease); }
+.nt-bal b { text-align: right; color: var(--gold2); font-weight: 600; }
+.nt-tabs { display: flex; gap: 6px; padding: 4px; margin: 4px 0 12px; border-radius: 16px; background: rgba(0,0,0,.3); border: 1px solid var(--line); }
+.nt-tabs button { flex: 1; min-width: 0; padding: 9px 4px; border: 0; border-radius: 12px; cursor: pointer; font: 500 13px var(--sans); color: var(--muted); background: none; transition: all .2s; }
+.nt-tabs button.on { color: #251b06; font-weight: 600; background: linear-gradient(135deg, var(--gold2), var(--gold)); box-shadow: 0 4px 14px rgba(230,198,117,.3); }
+.nt-summary { margin: 0 0 12px; padding: 14px 16px; border-radius: 18px; font: 500 15.5px/1.55 var(--sans); color: var(--text);
+  background: linear-gradient(135deg, rgba(139,108,240,.38), rgba(70,40,150,.3) 60%, rgba(230,198,117,.16)); border: 1px solid rgba(139,108,240,.55); }
+.nt-acc { margin-bottom: 8px; border-radius: 18px; overflow: hidden; border: 1px solid var(--line); background: rgba(0,0,0,.22); }
+.nt-acc.open { border-color: rgba(230,198,117,.45); background: linear-gradient(160deg, rgba(139,108,240,.14), rgba(0,0,0,.25)); }
+.nt-acc > button { width: 100%; display: flex; align-items: center; gap: 11px; padding: 12px 14px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; font: 600 14.5px var(--sans); }
+.nt-acc .ico { flex: none; width: 34px; height: 34px; display: grid; place-items: center; font-size: 17px; border-radius: 12px; background: linear-gradient(135deg, rgba(230,198,117,.25), rgba(139,108,240,.3)); }
+.nt-acc .chev { margin-left: auto; color: var(--muted); font-size: 18px; transition: transform .25s; }
+.nt-acc.open .chev { transform: rotate(90deg); }
+.nt-acc .bd { padding: 0 16px 14px 59px; }
+.nt-acc .bd p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.62; }
+.nt-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+.nt-pc { padding: 11px 12px; border-radius: 16px; border: 1px solid var(--line); background: linear-gradient(160deg, rgba(255,255,255,.07), rgba(0,0,0,.2)); }
+.nt-pc .gl { display: inline-grid; place-items: center; width: 34px; height: 34px; border-radius: 50%; font: 19px/1 var(--sans); border: 1.5px solid; background: rgba(10,8,28,.6); }
+.nt-pc b { display: block; margin-top: 6px; font: 600 14px var(--sans); }
+.nt-pc small { display: block; font-size: 12px; color: var(--muted); }
+.nt-pc .sg { margin-top: 3px; font: 600 13.5px var(--sans); color: var(--gold2); }
+.nt-pc .rt { float: right; margin-top: 2px; padding: 1px 7px; border-radius: 99px; font-size: 10.5px; color: var(--rose); background: rgba(255,148,168,.14); }
+.nt-hr { display: flex; align-items: center; gap: 12px; padding: 10px 12px; margin-bottom: 7px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,.22); }
+.nt-hr .n { flex: none; width: 32px; height: 32px; display: grid; place-items: center; border-radius: 50%; font: 700 14px var(--sans); color: #251b06; background: linear-gradient(135deg, var(--gold2), var(--gold)); }
+.nt-hr .t { flex: 1; min-width: 0; }
+.nt-hr .t b { display: block; font: 600 13.5px var(--sans); }
+.nt-hr .t small { display: block; font-size: 12px; color: var(--muted); }
+.nt-hr .r { flex: none; text-align: right; font: 600 13px var(--sans); color: var(--gold2); }
+.nt-hr .r small { display: block; font-weight: 400; color: var(--muted); font-size: 12px; }
+.nt-as { display: flex; align-items: center; gap: 10px; padding: 10px 12px; margin-bottom: 7px; border-radius: 16px; border: 1px solid var(--line); background: rgba(0,0,0,.22); }
+.nt-as .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; box-shadow: 0 0 10px currentColor; background: currentColor; }
+.nt-as .t { flex: 1; min-width: 0; font-size: 14px; }
+.nt-as .t small { display: block; color: var(--muted); font-size: 12px; }
+.nt-as .o { flex: none; width: 60px; }
+.nt-as .o span { display: block; height: 6px; border-radius: 99px; background: rgba(255,255,255,.1); overflow: hidden; }
+.nt-as .o i { display: block; height: 100%; border-radius: 99px; background: currentColor; }
+.nt-as .o small { display: block; margin-top: 3px; text-align: right; font-size: 11px; color: var(--muted); }
+.nt-h { margin: 14px 2px 8px; font: 600 12px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--gold); }
 .nt-warn { margin: 6px 0 10px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; color: var(--rose); background: rgba(255,148,168,.1); }
 
 .fb { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
@@ -1459,84 +1505,164 @@ function ntWait(id, url) {
   title.textContent = 'Ждём оплату…'; text.textContent = 'Оплатите на открывшейся странице (СБП или карта) и вернитесь сюда: статус обновится сам.';
   ntTimer = setInterval(tick, 4000); setTimeout(tick, 1500);
 }
+const PL_COLOR = {sun: '#f8e6b0', moon: '#cfd8ff', mercury: '#9fe3d2', venus: '#ffb3d1', mars: '#ff8a7a', jupiter: '#ffcf7a', saturn: '#c9b79c',
+  uranus: '#7fe0ff', neptune: '#8fa8ff', pluto: '#c39bff', node: '#b8b3d6'};
+const PL_ROLE = {sun: 'Ядро личности', moon: 'Эмоции', mercury: 'Мышление', venus: 'Любовь и вкус', mars: 'Энергия и воля', jupiter: 'Рост и удача',
+  saturn: 'Дисциплина', uranus: 'Перемены', neptune: 'Интуиция и мечты', pluto: 'Трансформация', node: 'Путь развития'};
+const HOUSE_ROLE = ['Личность и внешность', 'Деньги и ценности', 'Общение и обучение', 'Дом и семья', 'Творчество и романтика', 'Здоровье и труд',
+  'Партнёрство', 'Трансформация', 'Путешествия и взгляды', 'Карьера и статус', 'Друзья и мечты', 'Тайное и интуиция'];
+const EL_ICON = {'огонь': '🔥', 'земля': '🌿', 'воздух': '💨', 'вода': '💧'};
+const EL_GRAD = {'огонь': 'linear-gradient(90deg,#ff9d6e,#e0533a)', 'земля': 'linear-gradient(90deg,#8fe3a9,#2f9a64)',
+  'воздух': 'linear-gradient(90deg,#f8e6b0,#d3a844)', 'вода': 'linear-gradient(90deg,#7fb8ff,#4a63e0)'};
+const SEC_ICON = [[/ядро/i, '✨'], [/эмоц/i, '🌙'], [/мышл|общен/i, '💬'], [/любов|отнош/i, '💞'], [/работ|деньг/i, '💼'], [/сильн/i, '💪'],
+  [/зон|рост/i, '🌱'], [/аспект/i, '🔗'], [/совет/i, '🧭']];
+const secIcon = t => (SEC_ICON.find(([re]) => re.test(t)) || [0, '✦'])[1];
+function sector(c, r1, r2, a1, a2, ang) {  // кольцевой сектор между долготами a1..a2
+  const P = (lon, r) => [c + r * Math.cos(ang(lon)), c - r * Math.sin(ang(lon))], f = n => n.toFixed(2);
+  const [x1, y1] = P(a1, r1), [x2, y2] = P(a2, r1), [x3, y3] = P(a2, r2), [x4, y4] = P(a1, r2);
+  return `M${f(x1)} ${f(y1)}A${r1} ${r1} 0 0 0 ${f(x2)} ${f(y2)}L${f(x3)} ${f(y3)}A${r2} ${r2} 0 0 1 ${f(x4)} ${f(y4)}Z`;
+}
 function wheelSvg(ch) {
-  const S = 360, C = 180, R1 = 158, R2 = 126, R3 = 72, RP = 108;
-  const asc = ch.time_known ? ch.asc.lon : 0;
+  const S = 360, C = 180, R1 = 160, R2 = 128, R3 = 72, RP = 106;
+  const asc = ch.time_known ? ch.asc.lon : 0, f = n => n.toFixed(1);
   const ang = lon => (180 + (lon - asc)) * Math.PI / 180;
   const pt = (lon, r) => [C + r * Math.cos(ang(lon)), C - r * Math.sin(ang(lon))];
-  const f = n => n.toFixed(1);
-  let s = `<svg class="nt-wheel" viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Колесо натальной карты" font-family="'Segoe UI Symbol','Noto Sans Symbols','Apple Symbols',sans-serif">`;
-  s += `<circle cx="${C}" cy="${C}" r="${R1}" fill="rgba(0,0,0,.28)" stroke="rgba(230,198,117,.6)"/><circle cx="${C}" cy="${C}" r="${R2}" fill="none" stroke="rgba(230,198,117,.4)"/><circle cx="${C}" cy="${C}" r="${R3}" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.18)"/>`;
-  for (let i = 0; i < 12; i++) {
-    const [x1, y1] = pt(i * 30, R2), [x2, y2] = pt(i * 30, R1), [gx, gy] = pt(i * 30 + 15, (R1 + R2) / 2);
-    s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="rgba(230,198,117,.35)"/>`;
-    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="17" fill="${EL_COLOR[i % 4]}">${SIGN_G[i]}</text>`;
+  const ELG = [['#ff9d6e', '#c0392b'], ['#8fe3a9', '#1f7a4d'], ['#f8e6b0', '#a9822e'], ['#7fb8ff', '#3149c9']];
+  let s = `<svg class="nt-wheel" viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Колесо натальной карты" font-family="'Segoe UI Symbol','Noto Sans Symbols','Apple Symbols',sans-serif"><defs>`;
+  s += `<radialGradient id="ntBg"><stop offset="0" stop-color="#2b1c6e"/><stop offset=".7" stop-color="#150f36"/><stop offset="1" stop-color="#0b0920"/></radialGradient>`;
+  s += `<linearGradient id="ntGold" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#f8e6b0"/><stop offset=".5" stop-color="#e6c675"/><stop offset="1" stop-color="#a9792b"/></linearGradient>`;
+  ELG.forEach(([a, b], i) => { s += `<linearGradient id="ntEl${i}" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="${a}" stop-opacity=".55"/><stop offset="1" stop-color="${b}" stop-opacity=".3"/></linearGradient>`; });
+  s += `<filter id="ntGlow" x="-50%" y="-50%" width="200%" height="200%"><feGaussianBlur stdDeviation="2.4" result="b"/><feMerge><feMergeNode in="b"/><feMergeNode in="SourceGraphic"/></feMerge></filter></defs>`;
+  s += `<circle cx="${C}" cy="${C}" r="${R1 + 12}" fill="none" stroke="url(#ntGold)" stroke-opacity=".35" stroke-dasharray="1.5 5"/>`;
+  s += `<circle cx="${C}" cy="${C}" r="${R1}" fill="url(#ntBg)"/>`;
+  for (let i = 0; i < 12; i++) {  // кольцо знаков: сектор окрашен цветом стихии
+    s += `<path d="${sector(C, R1, R2, i * 30, (i + 1) * 30, ang)}" fill="url(#ntEl${i % 4})" stroke="rgba(248,230,176,.4)" stroke-width=".8"/>`;
+    const [gx, gy] = pt(i * 30 + 15, (R1 + R2) / 2);
+    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="17" fill="#fff6dc" filter="url(#ntGlow)">${SIGN_G[i]}</text>`;
   }
+  s += `<circle cx="${C}" cy="${C}" r="${R1}" fill="none" stroke="url(#ntGold)" stroke-width="1.6"/><circle cx="${C}" cy="${C}" r="${R2}" fill="none" stroke="url(#ntGold)" stroke-opacity=".7"/>`;
+  let seed = 7; const rnd = () => (seed = (seed * 9301 + 49297) % 233280) / 233280;
+  for (let i = 0; i < 46; i++) {  // россыпь звёзд внутри круга
+    const a = rnd() * 6.283, r = Math.sqrt(rnd()) * (R2 - 6);
+    s += `<circle cx="${f(C + r * Math.cos(a))}" cy="${f(C + r * Math.sin(a))}" r="${(rnd() * .9 + .3).toFixed(1)}" fill="#fff" opacity="${(rnd() * .5 + .15).toFixed(2)}"/>`;
+  }
+  s += `<circle cx="${C}" cy="${C}" r="${R3}" fill="rgba(255,255,255,.04)" stroke="rgba(248,230,176,.35)"/>`;
   if (ch.time_known) {
     ch.houses.forEach((h, i) => {
       const axis = [0, 3, 6, 9].includes(i), [x1, y1] = pt(h.lon, R3), [x2, y2] = pt(h.lon, R2);
-      s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${axis ? 'rgba(230,198,117,.85)' : 'rgba(255,255,255,.2)'}" stroke-width="${axis ? 1.6 : 1}"/>`;
-      const next = ch.houses[(i + 1) % 12].lon, mid = h.lon + (((next - h.lon) % 360 + 360) % 360) / 2, [nx, ny] = pt(mid, R3 + 12);
-      s += `<text x="${f(nx)}" y="${f(ny)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="rgba(255,255,255,.45)">${h.n}</text>`;
+      s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${axis ? '#e6c675' : 'rgba(255,255,255,.2)'}" stroke-width="${axis ? 1.8 : .9}"/>`;
+      const next = ch.houses[(i + 1) % 12].lon, mid = h.lon + (((next - h.lon) % 360 + 360) % 360) / 2, [nx, ny] = pt(mid, R3 + 11);
+      s += `<text x="${f(nx)}" y="${f(ny)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="rgba(255,255,255,.5)">${h.n}</text>`;
     });
-    const [ax, ay] = pt(ch.asc.lon, R1 + 11), [mx, my] = pt(ch.mc.lon, R1 + 11);
-    s += `<text x="${f(ax)}" y="${f(ay)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#e6c675">ASC</text><text x="${f(mx)}" y="${f(my)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#e6c675">MC</text>`;
+    [[ch.asc.lon, 'ASC'], [ch.mc.lon, 'MC']].forEach(([lon, t]) => {
+      const [x, y] = pt(lon, R1 + 12), [tx, ty] = pt(lon, R1 + 1);
+      s += `<circle cx="${f(tx)}" cy="${f(ty)}" r="3.2" fill="url(#ntGold)" filter="url(#ntGlow)"/><text x="${f(x)}" y="${f(y)}" text-anchor="middle" dominant-baseline="central" font-size="9" font-weight="700" fill="#f8e6b0">${t}</text>`;
+    });
   }
   const byId = {}; ch.planets.forEach(p => byId[p.id] = p);
   ch.aspects.forEach(a => {
-    const [x1, y1] = pt(byId[a.a].lon, R3), [x2, y2] = pt(byId[a.b].lon, R3);
-    s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${ASP_COLOR[a.type]}" stroke-opacity="${a.orb < 3 ? .85 : .5}" stroke-width="${a.orb < 3 ? 1.3 : .8}"/>`;
+    const [x1, y1] = pt(byId[a.a].lon, R3), [x2, y2] = pt(byId[a.b].lon, R3), tight = a.orb < 3;
+    s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${ASP_COLOR[a.type]}" stroke-opacity="${tight ? .9 : .5}" stroke-width="${tight ? 1.5 : .9}" ${tight ? 'filter="url(#ntGlow)"' : ''}/>`;
   });
   const pl = ch.planets.map(p => ({p, d: p.lon})).sort((a, b) => a.d - b.d);
   for (let k = 0; k < 80; k++) for (let i = 0; i < pl.length; i++) {  // раздвигаем планеты, стоящие слишком близко
     const a = pl[i], b = pl[(i + 1) % pl.length], gap = (b.d - a.d + 360) % 360;
-    if (gap < 9) { const push = (9 - gap) / 2; a.d = (a.d - push + 360) % 360; b.d = (b.d + push) % 360; }
+    if (gap < 10) { const push = (10 - gap) / 2; a.d = (a.d - push + 360) % 360; b.d = (b.d + push) % 360; }
   }
   pl.forEach(({p, d}) => {
-    const [tx1, ty1] = pt(p.lon, R2), [tx2, ty2] = pt(p.lon, R2 - 6), [gx, gy] = pt(d, RP), [rx, ry] = pt(d, RP - 14);
-    s += `<line x1="${f(tx1)}" y1="${f(ty1)}" x2="${f(tx2)}" y2="${f(ty2)}" stroke="#f8e6b0"/>`;
-    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="17" fill="#f8e6b0">${PL_G[p.id]}︎</text>`;
-    if (p.retro) s += `<text x="${f(rx)}" y="${f(ry)}" text-anchor="middle" dominant-baseline="central" font-size="8" fill="#ff94a8">R</text>`;
+    const col = PL_COLOR[p.id], [tx1, ty1] = pt(p.lon, R2), [tx2, ty2] = pt(p.lon, R2 - 7), [gx, gy] = pt(d, RP), [rx, ry] = pt(d, RP - 17);
+    s += `<line x1="${f(tx1)}" y1="${f(ty1)}" x2="${f(tx2)}" y2="${f(ty2)}" stroke="${col}" stroke-width="1.4"/>`;
+    s += `<circle cx="${f(gx)}" cy="${f(gy)}" r="11.5" fill="rgba(12,9,32,.82)" stroke="${col}" stroke-width="1.2" filter="url(#ntGlow)"/>`;
+    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="15" fill="${col}">${PL_G[p.id]}︎</text>`;
+    if (p.retro) s += `<text x="${f(rx)}" y="${f(ry)}" text-anchor="middle" dominant-baseline="central" font-size="8" font-weight="700" fill="#ff94a8">R</text>`;
   });
   return s + '</svg>';
 }
 function ntShow(o) {
   ntStop();
   const body = $('ntBody'), ch = o.chart, res = o.result, by = {}; ch.planets.forEach(p => by[p.id] = p);
+  const dm = d => String(d).split('-').reverse().join('.'), deg = p => Math.floor(p.deg) + '°';
   body.innerHTML = '';
-  body.appendChild(node('p', 'nt-head', (o.name ? o.name + ' · ' : '') + o.birth_date.split('-').reverse().join('.') + (o.birth_time ? ', ' + o.birth_time : '') + ' · ' + o.place));
-  if (!ch.time_known) body.appendChild(node('div', 'nt-warn', 'Время рождения не указано: карта без домов и Асцендента, положение Луны приблизительное.'));
-  const wrap = document.createElement('div'); wrap.innerHTML = wheelSvg(ch); body.appendChild(wrap);
+  const hero = node('div', 'nt-hero'), who = node('div', 'nt-who');
+  who.appendChild(node('b', '', o.name || 'Ваша натальная карта'));
+  who.appendChild(node('small', '', dm(o.birth_date) + (o.birth_time ? ', ' + o.birth_time : '') + ' · ' + o.place));
+  hero.appendChild(who);
+  const wrap = document.createElement('div'); wrap.innerHTML = wheelSvg(ch); hero.appendChild(wrap.firstChild);
   const trio = node('div', 'nt-trio');
-  [['Солнце', by.sun], ['Луна', by.moon], [ch.time_known ? 'Асцендент' : 'Меркурий', ch.time_known ? ch.asc : by.mercury]].forEach(([t, p]) => {
-    const d = document.createElement('div'); d.appendChild(node('small', '', t)); d.appendChild(node('b', '', SIGN_G[p.sign_index] + ' ' + p.sign)); trio.appendChild(d);
+  [['Солнце', by.sun, '☉', PL_COLOR.sun], ['Луна', by.moon, '☽', PL_COLOR.moon],
+   ch.time_known ? ['Асцендент', ch.asc, '↑', '#e6c675'] : ['Меркурий', by.mercury, '☿', PL_COLOR.mercury]].forEach(([t, p, g, col]) => {
+    const d = document.createElement('div'), i = document.createElement('i');
+    i.textContent = g + '︎'; i.style.color = col; d.appendChild(i); d.appendChild(node('small', '', t));
+    d.appendChild(node('b', '', SIGN_G[p.sign_index] + ' ' + p.sign)); d.appendChild(node('em', '', deg(p))); trio.appendChild(d);
   });
-  body.appendChild(trio);
-  if (res.summary) body.appendChild(node('div', 'nt-summary', res.summary));
-  res.sections.forEach(sec => {
-    const box = node('div', 'nt-sec'); if (sec.title) box.appendChild(node('h4', '', sec.title)); paras(box, sec.text); body.appendChild(box);
+  hero.appendChild(trio);
+  const bal = node('div', 'nt-bal'), total = Math.max(1, Object.values(ch.elements).reduce((a, b) => a + b, 0));
+  Object.entries(ch.elements).forEach(([name, n]) => {
+    const row = document.createElement('div'), barEl = document.createElement('span'), fill = document.createElement('i');
+    fill.style.cssText = 'width:0;background:' + EL_GRAD[name]; barEl.appendChild(fill);
+    row.appendChild(node('em', '', (EL_ICON[name] || '') + ' ' + name.charAt(0).toUpperCase() + name.slice(1))); row.appendChild(barEl); row.appendChild(node('b', '', n));
+    bal.appendChild(row); requestAnimationFrame(() => requestAnimationFrame(() => { fill.style.width = Math.round(n / total * 100) + '%'; }));
   });
-  body.appendChild(node('div', 'h3', 'Положение планет'));
-  const tbl = document.createElement('table'); tbl.className = 'nt-tbl';
-  ch.planets.forEach(p => {
-    const tr = document.createElement('tr');
-    [PL_G[p.id] + '︎ ' + p.name + (p.retro ? ' (R)' : ''), SIGN_G[p.sign_index] + ' ' + p.sign + ' ' + Math.floor(p.deg) + '°', p.house ? p.house + ' дом' : ''].forEach(t => {
-      const td = document.createElement('td'); td.textContent = t; tr.appendChild(td);
-    });
-    tbl.appendChild(tr);
-  });
-  body.appendChild(tbl);
-  if (ch.aspects.length) {
-    body.appendChild(node('div', 'h3', 'Главные аспекты'));
-    const at = document.createElement('table'); at.className = 'nt-tbl';
-    ch.aspects.slice(0, 10).forEach(a => {
-      const tr = document.createElement('tr');
-      [by[a.a].name + ' · ' + by[a.b].name, a.name, a.orb.toFixed(1) + '°'].forEach(t => { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); });
-      at.appendChild(tr);
-    });
-    body.appendChild(at);
-  }
-  body.appendChild(node('p', 'cd-note', 'Астрология — инструмент для размышления, а не прогноз и не гарантия. Расчёт приблизительный (точность в пределах нескольких угловых минут), дома по системе Плацидуса.'));
+  hero.appendChild(node('div', 'nt-h', 'Баланс стихий')); hero.appendChild(bal);
+  body.appendChild(hero);
+  if (!ch.time_known) body.appendChild(node('div', 'nt-warn', 'Время рождения не указано: карта без домов и Асцендента, положение Луны приблизительное.'));
+
+  const tabs = [['read', 'Разбор'], ['pl', 'Планеты']].concat(ch.time_known ? [['hs', 'Дома']] : [], [['as', 'Аспекты']]);
+  const bar = node('div', 'nt-tabs'), pane = node('div', 'nt-pane');
+  const panes = {
+    read() {
+      if (res.summary) pane.appendChild(node('div', 'nt-summary', res.summary));
+      res.sections.forEach((sec, i) => {
+        const acc = node('div', 'nt-acc' + (i === 0 ? ' open' : '')), head = document.createElement('button'), bd = node('div', 'bd' + (i === 0 ? '' : ' hidden'));
+        head.type = 'button';
+        head.appendChild(node('span', 'ico', secIcon(sec.title))); head.appendChild(document.createTextNode(sec.title || 'Разбор')); head.appendChild(node('span', 'chev', '›'));
+        paras(bd, sec.text); acc.appendChild(head); acc.appendChild(bd); pane.appendChild(acc);
+        head.onclick = () => { acc.classList.toggle('open'); bd.classList.toggle('hidden'); buzz(); };
+      });
+    },
+    pl() {
+      const grid = node('div', 'nt-grid');
+      ch.planets.forEach(p => {
+        const c = node('div', 'nt-pc'), col = PL_COLOR[p.id], gl = node('span', 'gl', PL_G[p.id] + '︎');
+        gl.style.cssText = 'color:' + col + ';border-color:' + col;
+        if (p.retro) c.appendChild(node('span', 'rt', 'R ретро'));
+        c.appendChild(gl); c.appendChild(node('b', '', p.name)); c.appendChild(node('small', '', PL_ROLE[p.id]));
+        c.appendChild(node('div', 'sg', SIGN_G[p.sign_index] + ' ' + p.sign + ' ' + deg(p)));
+        if (p.house) c.appendChild(node('small', '', p.house + ' дом · ' + HOUSE_ROLE[p.house - 1].toLowerCase()));
+        grid.appendChild(c);
+      });
+      pane.appendChild(grid);
+    },
+    hs() {
+      ch.houses.forEach((h, i) => {
+        const inside = ch.planets.filter(p => p.house === h.n).map(p => PL_G[p.id] + '︎ ' + p.name).join(', ');
+        const r = node('div', 'nt-hr'), t = node('div', 't');
+        r.appendChild(node('span', 'n', h.n)); t.appendChild(node('b', '', HOUSE_ROLE[i])); t.appendChild(node('small', '', inside || 'пустой'));
+        r.appendChild(t); const rt = node('div', 'r', SIGN_G[h.sign_index] + ' ' + h.sign); rt.appendChild(node('small', '', Math.floor(h.deg) + '°')); r.appendChild(rt);
+        pane.appendChild(r);
+      });
+      pane.appendChild(node('p', 'cd-note', 'Дома рассчитаны по системе Плацидуса' + (ch.system && ch.system !== 'Плацидус' ? ' (для вашей широты использованы равные дома)' : '') + '.'));
+    },
+    as() {
+      if (!ch.aspects.length) { pane.appendChild(node('p', 'sup-contact', 'Тесных аспектов между планетами не найдено.')); return; }
+      ch.aspects.forEach(a => {
+        const r = node('div', 'nt-as'), col = ASP_COLOR[a.type], dot = node('span', 'dot'), t = node('div', 't');
+        r.style.color = col;
+        t.style.color = 'var(--text)'; t.appendChild(document.createTextNode(PL_G[a.a] + '︎ ' + by[a.a].name + ' · ' + PL_G[a.b] + '︎ ' + by[a.b].name));
+        t.appendChild(node('small', '', a.name));
+        const o = node('div', 'o'), sp = document.createElement('span'), fl = document.createElement('i');
+        fl.style.width = Math.round((1 - Math.min(a.orb, 8) / 8) * 100) + '%'; sp.appendChild(fl); o.appendChild(sp); o.appendChild(node('small', '', 'орб ' + a.orb.toFixed(1) + '°'));
+        r.appendChild(dot); r.appendChild(t); r.appendChild(o); pane.appendChild(r);
+      });
+      pane.appendChild(node('p', 'cd-note', 'Чем меньше орб, тем сильнее аспект: полоска показывает точность.'));
+    }
+  };
+  const open = key => {
+    [...bar.children].forEach(b => b.classList.toggle('on', b.dataset.k === key)); pane.innerHTML = ''; panes[key](); buzz();
+  };
+  tabs.forEach(([k, t]) => { const b = node('button', k === 'read' ? 'on' : '', t); b.type = 'button'; b.dataset.k = k; b.onclick = () => open(k); bar.appendChild(b); });
+  body.appendChild(bar); body.appendChild(pane); panes.read();
+  body.appendChild(node('p', 'cd-note', 'Астрология — инструмент для размышления, а не прогноз и не гарантия. Расчёт приблизительный (точность в пределах нескольких угловых минут).'));
   const back = node('button', 'sheet-close', '← К моим картам'); back.type = 'button'; back.style.marginBottom = '8px';
   back.onclick = () => openNatal(); body.appendChild(back);
   $('natalSheet').scrollTop = 0;
