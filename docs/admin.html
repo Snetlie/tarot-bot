@@ -132,7 +132,8 @@ function renderStats() {
   [['Пользователей', s.users, s.new_today ? '+' + s.new_today + ' сегодня' : ''], ['Активны за 7 дней', s.active_7d, ''],
    ['Раскладов', s.readings, s.readings_today ? '+' + s.readings_today + ' сегодня' : ''], ['Сообщений всего', s.messages, ''],
    ['Выручка', money(s.paid_total), ''], ['Оплат', s.paid_count, ''], ['Открытых обращений', s.tickets_open, ''],
-   ['Оценки ответов', (s.rated_good || 0) + ' 👍 · ' + (s.rated_bad || 0) + ' 👎', '']].forEach(([l, v, d]) => {
+   ['Оценки ответов', (s.rated_good || 0) + ' 👍 · ' + (s.rated_bad || 0) + ' 👎', ''],
+   ['Натальных карт', s.natal_paid || 0, s.natal_stuck ? s.natal_stuck + ' ещё не готово' : '']].forEach(([l, v, d]) => {
     const c = el('div', 'stat'); const b = el('b', '', v); c.appendChild(b);
     const sp = el('span', '', l); if (d) sp.appendChild(el('i', '', d)); c.appendChild(sp); box.appendChild(c);
   });

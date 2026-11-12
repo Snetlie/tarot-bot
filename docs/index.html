@@ -312,6 +312,50 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
   background: linear-gradient(135deg, var(--gold2), var(--gold)); }
 .reply button:disabled { opacity: .4; }
 
+/* ---------- натальная карта ---------- */
+#natalSheet { max-height: 92vh; }
+.nt-lead { margin: 6px 0 10px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.nt-list { margin: 0 0 12px; padding-left: 18px; font-size: 13.5px; line-height: 1.5; color: var(--text); }
+.nt-price { display: inline-block; margin: 2px 0 12px; padding: 4px 12px; border-radius: 99px; font: 600 13px var(--sans); color: var(--gold2);
+  background: rgba(230,198,117,.12); border: 1px solid rgba(230,198,117,.45); }
+.nt-lbl { display: block; margin: 8px 2px 4px; font-size: 12px; color: var(--muted); }
+.nt-chk { display: flex; align-items: center; gap: 8px; margin: -2px 0 8px; font-size: 13px; color: var(--muted); }
+.nt-chk input { width: 18px; height: 18px; margin: 0; accent-color: #e6c675; }
+.sup-form input:disabled { opacity: .4; }
+.nt-found { margin: -2px 0 8px; border: 1px solid var(--line); border-radius: 14px; overflow: hidden; background: rgba(0,0,0,.25); }
+.nt-found button { display: block; width: 100%; padding: 10px 14px; text-align: left; background: none; border: 0; border-bottom: 1px solid var(--line);
+  color: var(--text); font: 14px var(--sans); cursor: pointer; }
+.nt-found button:last-child { border-bottom: 0; }
+.nt-found button:active { background: var(--glass2); }
+.nt-found small { display: block; padding: 8px 14px; color: var(--muted); font-size: 12.5px; }
+.nt-picked { display: flex; align-items: center; gap: 8px; margin: 0 0 8px; padding: 10px 14px; border-radius: 14px; font-size: 14px;
+  background: rgba(111,227,165,.1); border: 1px solid rgba(111,227,165,.4); }
+.nt-picked span { flex: 1; min-width: 0; }
+.nt-picked button { background: none; border: 0; color: var(--gold2); font: 13px var(--sans); cursor: pointer; text-decoration: underline; }
+.nt-state { text-align: center; padding: 26px 8px 14px; }
+.nt-state b { display: block; margin-bottom: 6px; font: 600 17px var(--sans); color: var(--gold2); }
+.nt-state p { margin: 0 0 12px; font-size: 14px; line-height: 1.5; color: var(--muted); }
+.nt-spin { width: 34px; height: 34px; margin: 0 auto 12px; border-radius: 50%; border: 3px solid rgba(230,198,117,.25); border-top-color: var(--gold); animation: nt-sp 1s linear infinite; }
+@keyframes nt-sp { to { transform: rotate(360deg); } }
+.nt-row { display: flex; align-items: center; justify-content: space-between; gap: 10px; width: 100%; margin-bottom: 8px; padding: 12px 14px; text-align: left; cursor: pointer;
+  color: var(--text); background: rgba(0,0,0,.22); border: 1px solid var(--line); border-radius: 16px; font: 500 14px var(--sans); }
+.nt-row small { display: block; margin-top: 2px; color: var(--muted); font-size: 12px; }
+.nt-wheel { width: 100%; max-width: 340px; margin: 8px auto 4px; display: block; }
+.nt-head { margin: 4px 0 2px; font-size: 13px; color: var(--muted); text-align: center; }
+.nt-trio { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 12px 0; }
+.nt-trio div { padding: 10px 6px; text-align: center; border-radius: 14px; background: rgba(230,198,117,.08); border: 1px solid rgba(230,198,117,.3); }
+.nt-trio small { display: block; font-size: 11px; color: var(--muted); letter-spacing: .06em; text-transform: uppercase; }
+.nt-trio b { display: block; margin-top: 2px; font: 600 15px var(--sans); color: var(--gold2); }
+.nt-summary { margin: 12px 0; padding: 12px 14px; border-radius: 14px; font-size: 15px; line-height: 1.55; background: rgba(139,108,240,.16); border: 1px solid rgba(139,108,240,.4); }
+.nt-sec { margin: 16px 0; }
+.nt-sec h4 { margin: 0 0 6px; font: 600 12px var(--sans); letter-spacing: .09em; text-transform: uppercase; color: var(--gold); }
+.nt-sec p { margin: 0 0 8px; font-size: 14.5px; line-height: 1.6; }
+.nt-tbl { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+.nt-tbl td { padding: 6px 4px; border-bottom: 1px solid var(--line); }
+.nt-tbl td:first-child { color: var(--muted); }
+.nt-tbl td:last-child { text-align: right; color: var(--muted); }
+.nt-warn { margin: 6px 0 10px; padding: 8px 12px; border-radius: 12px; font-size: 12.5px; color: var(--rose); background: rgba(255,148,168,.1); }
+
 .fb { display: flex; align-items: center; gap: 8px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--line); font-size: 13px; color: var(--muted); }
 .fb span { flex: 1; }
 .fb button { width: 42px; height: 36px; border-radius: 12px; cursor: pointer; font-size: 16px; color: var(--text);
@@ -436,6 +480,14 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
     </div>
 
     <div class="panel">
+      <button class="birth" id="natalBtn" type="button">
+        <span class="ic">🪐</span>
+        <span><b>Натальная карта</b><small>Разбор по дате, времени и месту рождения · 399 ₽</small></span>
+        <span class="chev">›</span>
+      </button>
+    </div>
+
+    <div class="panel">
       <button class="birth" id="deckBtn" type="button">
         <span class="ic">🃏</span>
         <span><b>Колода таро</b><small>Значения всех 78 карт с иллюстрациями</small></span>
@@ -494,6 +546,12 @@ textarea:focus, input:focus { border-color: var(--gold); box-shadow: 0 0 0 4px r
   <button class="sheet-close" id="cdGo" type="button" style="margin-bottom:8px">К толкованию в раскладе</button>
   <button class="sheet-close" id="cdBack" type="button" style="margin-bottom:8px">← К колоде</button>
   <button class="sheet-close" id="cdClose" type="button">Закрыть</button>
+</div>
+<div class="sheet hidden" id="natalSheet" role="dialog" aria-modal="true" aria-labelledby="ntTitle">
+  <div class="grip"></div>
+  <b class="sheet-title" id="ntTitle">Натальная карта</b>
+  <div id="ntBody"></div>
+  <button class="sheet-close" id="ntClose" type="button" style="margin-top:10px">Закрыть</button>
 </div>
 <div class="sheet hidden" id="deckSheet" role="dialog" aria-modal="true">
   <div class="grip"></div>
@@ -1038,7 +1096,7 @@ function openPlans(note) {
   $('sheetNote').textContent = note || '';
   loadQuota();
 }
-function closePlans() { ['sheetBg', 'sheet', 'supSheet', 'cardSheet', 'deckSheet'].forEach(x => $(x).classList.add('hidden')); }
+function closePlans() { ntStop(); ['sheetBg', 'sheet', 'supSheet', 'cardSheet', 'deckSheet', 'natalSheet'].forEach(x => $(x).classList.add('hidden')); }
 function setPlansBusy(v) { document.querySelectorAll('.plan, .don').forEach(x => x.disabled = v); }
 let lastPaid = 0, payTimer = null;
 // после ухода на страницу оплаты раз в несколько секунд спрашиваем сервер, не пришло ли подтверждение
@@ -1165,6 +1223,7 @@ $('supBtn').onclick = () => openSupport();
 $('supClose').onclick = closePlans;
 const startScreen = new URLSearchParams(location.search).get('screen');
 if (startScreen === 'support') openSupport(); else if (startScreen === 'tariffs') openPlans();
+else if (startScreen === 'natal') setTimeout(() => openNatal(new URLSearchParams(location.search).get('order')), 0);
 
 /* карты: подробные значения и колода */
 let cardsInfo = null;
@@ -1173,7 +1232,7 @@ async function loadCardsInfo() {
   return cardsInfo;
 }
 function showSheet(id) {
-  ['sheet', 'supSheet', 'cardSheet', 'deckSheet'].forEach(x => $(x).classList.toggle('hidden', x !== id));
+  ['sheet', 'supSheet', 'cardSheet', 'deckSheet', 'natalSheet'].forEach(x => $(x).classList.toggle('hidden', x !== id));
   $('sheetBg').classList.remove('hidden');
 }
 async function openCard(name, reversed, opt) {
@@ -1217,6 +1276,236 @@ $('cdBack').onclick = openDeck;
 $('cdClose').onclick = closePlans;
 $('deckClose').onclick = closePlans;
 $('cdImg').onclick = () => $('cdTop').classList.toggle('zoom');
+/* натальная карта: форма, оплата, показ результата */
+const SIGN_G = ['♈', '♉', '♊', '♋', '♌', '♍', '♎', '♏', '♐', '♑', '♒', '♓'].map(x => x + '︎');
+const EL_COLOR = ['#ff9d6e', '#8fe3a9', '#f8e6b0', '#7fb8ff'];
+const PL_G = {sun: '☉', moon: '☽', mercury: '☿', venus: '♀', mars: '♂', jupiter: '♃', saturn: '♄', uranus: '♅', neptune: '♆', pluto: '♇', node: '☊'};
+const ASP_COLOR = {conjunction: '#e6c675', opposition: '#ff94a8', square: '#ff94a8', trine: '#6fe3a5', sextile: '#7fb8ff'};
+let ntTimer = null, ntPlace = null, ntInfo = {};
+function ntStop() { clearInterval(ntTimer); ntTimer = null; }
+function ntLink(url) { try { tg.openLink(url); } catch (x) { window.open(url, '_blank'); } }
+function ntError(el, e) {
+  const d = e.data || {};
+  el.style.color = ''; el.textContent = String(e.message).split('\n')[0];
+  if (d.contact) {
+    el.appendChild(document.createElement('br')); el.appendChild(document.createTextNode('Для покупки пока напишите '));
+    const a = document.createElement('a'); a.href = d.contact; a.textContent = '@' + d.contact_name; a.style.color = 'var(--gold2)';
+    a.onclick = ev => { ev.preventDefault(); try { tg.openTelegramLink(d.contact); } catch (x) { window.open(d.contact, '_blank'); } };
+    el.appendChild(a); el.appendChild(document.createTextNode('.'));
+  }
+}
+function ntLoading(text) {
+  const b = $('ntBody'); b.innerHTML = '';
+  const s = node('div', 'nt-state'); s.appendChild(node('div', 'nt-spin')); s.appendChild(node('p', '', text)); b.appendChild(s);
+}
+async function openNatal(orderId) {
+  showSheet('natalSheet'); buzz(); ntStop(); ntLoading('Загрузка…');
+  try { ntInfo = await api('/api/natal/info', {}); }
+  catch (e) { $('ntBody').innerHTML = ''; $('ntBody').appendChild(node('p', 'sup-contact', e.message)); return; }
+  if (orderId) ntOpenOrder(+orderId); else ntForm();
+}
+async function ntOpenOrder(id) {
+  ntLoading('Загрузка карты…');
+  try {
+    const o = await api('/api/natal/get', {id});
+    if (o.status === 'ready') ntShow(o); else ntWait(id, '');
+  } catch (e) { ntForm(e.message); }
+}
+function ntForm(note) {
+  ntStop(); ntPlace = null;
+  const body = $('ntBody'); body.innerHTML = '';
+  body.appendChild(node('p', 'nt-lead', 'Расчёт положения планет и домов на момент вашего рождения и подробный разбор.'));
+  const ul = node('ul', 'nt-list');
+  ['Характер, эмоции и внутренний мир', 'Любовь и отношения', 'Работа, деньги и таланты', 'Сильные стороны, зоны роста и совет на ближайшее время']
+    .forEach(t => ul.appendChild(node('li', '', t)));
+  body.appendChild(ul);
+  const price = ntInfo.price || 399;
+  body.appendChild(node('span', 'nt-price', price + ' ₽ · разовая оплата, без подписки'));
+  const form = node('div', 'sup-form');
+  const mk = (tag, attrs) => Object.assign(document.createElement(tag), attrs);
+  const name = mk('input', {maxLength: 40, placeholder: 'Имя (необязательно)', value: store.get('nt_name')});
+  const date = mk('input', {type: 'date', min: '1900-01-01', max: new Date().toISOString().slice(0, 10), value: store.get('birth') || ntInfo.birth_date || ''});
+  const time = mk('input', {type: 'time'});
+  const unk = mk('input', {type: 'checkbox'});
+  const chk = node('label', 'nt-chk'); chk.appendChild(unk); chk.appendChild(document.createTextNode('Не знаю точное время рождения'));
+  const tnote = node('p', 'nt-warn hidden', 'Без времени карта будет без домов и Асцендента, а положение Луны приблизительным.');
+  const city = mk('input', {placeholder: 'Начните вводить город', maxLength: 60, autocomplete: 'off'});
+  const found = node('div', 'nt-found hidden'), picked = node('div', 'nt-picked hidden');
+  picked.appendChild(document.createElement('span'));
+  const change = mk('button', {type: 'button', textContent: 'изменить'}); picked.appendChild(change);
+  const go = mk('button', {type: 'button', className: 'sup-send', textContent: 'Оплатить ' + price + ' ₽ и получить карту', disabled: true});
+  const msg = node('p', 'sheet-note', note || '');
+  const check = () => { go.disabled = !(date.value && ntPlace && (unk.checked || time.value)); };
+  [['Имя', name], ['Дата рождения', date], ['Время рождения', time]].forEach(([l, el]) => { form.appendChild(node('label', 'nt-lbl', l)); form.appendChild(el); });
+  form.appendChild(chk); form.appendChild(tnote);
+  form.appendChild(node('label', 'nt-lbl', 'Город рождения')); [city, found, picked].forEach(x => form.appendChild(x));
+  form.appendChild(go); body.appendChild(form); body.appendChild(msg);
+  const consent = node('p', 'consent');
+  consent.appendChild(document.createTextNode('Нажимая кнопку, вы принимаете '));
+  [['Пользовательское соглашение', 'terms'], [' и Политику конфиденциальности', 'privacy']].forEach(([t, doc], i) => {
+    const a = document.createElement('a'); a.href = '#'; a.textContent = i ? t.trim() : t;
+    a.onclick = e => { e.preventDefault(); openDoc(doc); };
+    if (i) consent.appendChild(document.createTextNode(' и ')); consent.appendChild(a);
+  });
+  consent.appendChild(document.createTextNode('. Данные рождения хранятся на сервере, чтобы вы могли открыть карту снова.'));
+  body.appendChild(consent);
+  date.oninput = time.oninput = check;
+  unk.onchange = () => { time.disabled = unk.checked; if (unk.checked) time.value = ''; tnote.classList.toggle('hidden', !unk.checked); check(); };
+  let timer = null, seq = 0;
+  const showFound = (list, err) => {
+    found.innerHTML = ''; found.classList.remove('hidden');
+    if (err) { found.appendChild(node('small', '', err)); return; }
+    if (!list.length) { found.appendChild(node('small', '', 'Ничего не найдено. Попробуйте написать название иначе.')); return; }
+    list.forEach(p => {
+      const b = mk('button', {type: 'button', textContent: p.label});
+      b.onclick = () => { ntPlace = p; found.classList.add('hidden'); city.classList.add('hidden'); picked.classList.remove('hidden'); picked.firstChild.textContent = '✓ ' + p.label; check(); buzz(); };
+      found.appendChild(b);
+    });
+  };
+  city.oninput = () => {
+    ntPlace = null; check(); clearTimeout(timer); const q = city.value.trim();
+    if (q.length < 2) { found.classList.add('hidden'); return; }
+    timer = setTimeout(async () => {
+      const my = ++seq;
+      try { const r = await api('/api/natal/place', {q}); if (my === seq) showFound(r.places); }
+      catch (e) { if (my === seq) showFound(null, e.message); }
+    }, 450);
+  };
+  change.onclick = () => { ntPlace = null; picked.classList.add('hidden'); city.classList.remove('hidden'); city.focus(); check(); };
+  go.onclick = async () => {
+    go.disabled = true; msg.style.color = ''; msg.textContent = ''; store.set('nt_name', name.value.trim());
+    try {
+      const r = await api('/api/natal/order', {name: name.value.trim(), birth_date: date.value, birth_time: unk.checked ? '' : time.value,
+        place: ntPlace.label, lat: ntPlace.lat, lon: ntPlace.lon, tz: ntPlace.tz});
+      ntLink(r.url); ntWait(r.id, r.url);
+    } catch (e) { ntError(msg, e); go.disabled = false; }
+  };
+  const orders = ntInfo.orders || [];
+  if (orders.length) {
+    body.appendChild(node('div', 'h3', 'Мои карты'));
+    const ST = {ready: ['готова', 'ok'], working: ['считается', ''], new: ['ждёт оплаты', 'off']};
+    orders.forEach(o => {
+      const row = mk('button', {type: 'button', className: 'nt-row'}), left = document.createElement('span'), st = ST[o.status] || ['', 'off'];
+      left.appendChild(document.createTextNode(o.place)); left.appendChild(node('small', '', (o.name ? o.name + ' · ' : '') + o.birth_date.split('-').reverse().join('.') + (o.birth_time ? ', ' + o.birth_time : '')));
+      row.appendChild(left); row.appendChild(node('span', 'pill ' + st[1], st[0])); row.onclick = () => ntOpenOrder(o.id); body.appendChild(row);
+    });
+  }
+  $('natalSheet').scrollTop = 0;
+}
+function ntWait(id, url) {
+  ntStop();
+  const body = $('ntBody'); body.innerHTML = '';
+  const s = node('div', 'nt-state'), title = document.createElement('b'), text = document.createElement('p');
+  s.appendChild(node('div', 'nt-spin')); s.appendChild(title); s.appendChild(text); body.appendChild(s);
+  const pay = node('button', 'sup-send', 'Открыть страницу оплаты'), back = node('button', 'sheet-close', '← Назад'), msg = node('p', 'sheet-note', '');
+  pay.type = back.type = 'button'; back.style.marginTop = '8px';
+  pay.onclick = async () => {
+    try { const r = url ? {url} : await api('/api/natal/pay', {id}); url = r.url; ntLink(url); }
+    catch (e) { ntError(msg, e); }
+  };
+  back.onclick = () => openNatal();
+  [pay, back, msg].forEach(x => body.appendChild(x));
+  let n = 0;
+  const tick = async () => {
+    n++;
+    try {
+      const o = await api('/api/natal/get', {id});
+      if (o.status === 'ready') { ntStop(); buzz(); return ntShow(o); }
+      const working = o.status === 'working';
+      title.textContent = working ? 'Оплата получена' : 'Ждём оплату…';
+      text.textContent = working ? 'Считаем вашу карту и готовим разбор, это займёт около минуты. Карта придёт и в чат с ботом.'
+        : 'Оплатите на открывшейся странице (СБП или карта) и вернитесь сюда: статус обновится сам.';
+      pay.classList.toggle('hidden', working);
+    } catch (e) {}
+    if (n > 150) ntStop();
+  };
+  title.textContent = 'Ждём оплату…'; text.textContent = 'Оплатите на открывшейся странице (СБП или карта) и вернитесь сюда: статус обновится сам.';
+  ntTimer = setInterval(tick, 4000); setTimeout(tick, 1500);
+}
+function wheelSvg(ch) {
+  const S = 360, C = 180, R1 = 158, R2 = 126, R3 = 72, RP = 108;
+  const asc = ch.time_known ? ch.asc.lon : 0;
+  const ang = lon => (180 + (lon - asc)) * Math.PI / 180;
+  const pt = (lon, r) => [C + r * Math.cos(ang(lon)), C - r * Math.sin(ang(lon))];
+  const f = n => n.toFixed(1);
+  let s = `<svg class="nt-wheel" viewBox="0 0 ${S} ${S}" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Колесо натальной карты" font-family="'Segoe UI Symbol','Noto Sans Symbols','Apple Symbols',sans-serif">`;
+  s += `<circle cx="${C}" cy="${C}" r="${R1}" fill="rgba(0,0,0,.28)" stroke="rgba(230,198,117,.6)"/><circle cx="${C}" cy="${C}" r="${R2}" fill="none" stroke="rgba(230,198,117,.4)"/><circle cx="${C}" cy="${C}" r="${R3}" fill="rgba(255,255,255,.03)" stroke="rgba(255,255,255,.18)"/>`;
+  for (let i = 0; i < 12; i++) {
+    const [x1, y1] = pt(i * 30, R2), [x2, y2] = pt(i * 30, R1), [gx, gy] = pt(i * 30 + 15, (R1 + R2) / 2);
+    s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="rgba(230,198,117,.35)"/>`;
+    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="17" fill="${EL_COLOR[i % 4]}">${SIGN_G[i]}</text>`;
+  }
+  if (ch.time_known) {
+    ch.houses.forEach((h, i) => {
+      const axis = [0, 3, 6, 9].includes(i), [x1, y1] = pt(h.lon, R3), [x2, y2] = pt(h.lon, R2);
+      s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${axis ? 'rgba(230,198,117,.85)' : 'rgba(255,255,255,.2)'}" stroke-width="${axis ? 1.6 : 1}"/>`;
+      const next = ch.houses[(i + 1) % 12].lon, mid = h.lon + (((next - h.lon) % 360 + 360) % 360) / 2, [nx, ny] = pt(mid, R3 + 12);
+      s += `<text x="${f(nx)}" y="${f(ny)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="rgba(255,255,255,.45)">${h.n}</text>`;
+    });
+    const [ax, ay] = pt(ch.asc.lon, R1 + 11), [mx, my] = pt(ch.mc.lon, R1 + 11);
+    s += `<text x="${f(ax)}" y="${f(ay)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#e6c675">ASC</text><text x="${f(mx)}" y="${f(my)}" text-anchor="middle" dominant-baseline="central" font-size="9" fill="#e6c675">MC</text>`;
+  }
+  const byId = {}; ch.planets.forEach(p => byId[p.id] = p);
+  ch.aspects.forEach(a => {
+    const [x1, y1] = pt(byId[a.a].lon, R3), [x2, y2] = pt(byId[a.b].lon, R3);
+    s += `<line x1="${f(x1)}" y1="${f(y1)}" x2="${f(x2)}" y2="${f(y2)}" stroke="${ASP_COLOR[a.type]}" stroke-opacity="${a.orb < 3 ? .85 : .5}" stroke-width="${a.orb < 3 ? 1.3 : .8}"/>`;
+  });
+  const pl = ch.planets.map(p => ({p, d: p.lon})).sort((a, b) => a.d - b.d);
+  for (let k = 0; k < 80; k++) for (let i = 0; i < pl.length; i++) {  // раздвигаем планеты, стоящие слишком близко
+    const a = pl[i], b = pl[(i + 1) % pl.length], gap = (b.d - a.d + 360) % 360;
+    if (gap < 9) { const push = (9 - gap) / 2; a.d = (a.d - push + 360) % 360; b.d = (b.d + push) % 360; }
+  }
+  pl.forEach(({p, d}) => {
+    const [tx1, ty1] = pt(p.lon, R2), [tx2, ty2] = pt(p.lon, R2 - 6), [gx, gy] = pt(d, RP), [rx, ry] = pt(d, RP - 14);
+    s += `<line x1="${f(tx1)}" y1="${f(ty1)}" x2="${f(tx2)}" y2="${f(ty2)}" stroke="#f8e6b0"/>`;
+    s += `<text x="${f(gx)}" y="${f(gy)}" text-anchor="middle" dominant-baseline="central" font-size="17" fill="#f8e6b0">${PL_G[p.id]}︎</text>`;
+    if (p.retro) s += `<text x="${f(rx)}" y="${f(ry)}" text-anchor="middle" dominant-baseline="central" font-size="8" fill="#ff94a8">R</text>`;
+  });
+  return s + '</svg>';
+}
+function ntShow(o) {
+  ntStop();
+  const body = $('ntBody'), ch = o.chart, res = o.result, by = {}; ch.planets.forEach(p => by[p.id] = p);
+  body.innerHTML = '';
+  body.appendChild(node('p', 'nt-head', (o.name ? o.name + ' · ' : '') + o.birth_date.split('-').reverse().join('.') + (o.birth_time ? ', ' + o.birth_time : '') + ' · ' + o.place));
+  if (!ch.time_known) body.appendChild(node('div', 'nt-warn', 'Время рождения не указано: карта без домов и Асцендента, положение Луны приблизительное.'));
+  const wrap = document.createElement('div'); wrap.innerHTML = wheelSvg(ch); body.appendChild(wrap);
+  const trio = node('div', 'nt-trio');
+  [['Солнце', by.sun], ['Луна', by.moon], [ch.time_known ? 'Асцендент' : 'Меркурий', ch.time_known ? ch.asc : by.mercury]].forEach(([t, p]) => {
+    const d = document.createElement('div'); d.appendChild(node('small', '', t)); d.appendChild(node('b', '', SIGN_G[p.sign_index] + ' ' + p.sign)); trio.appendChild(d);
+  });
+  body.appendChild(trio);
+  if (res.summary) body.appendChild(node('div', 'nt-summary', res.summary));
+  res.sections.forEach(sec => {
+    const box = node('div', 'nt-sec'); if (sec.title) box.appendChild(node('h4', '', sec.title)); paras(box, sec.text); body.appendChild(box);
+  });
+  body.appendChild(node('div', 'h3', 'Положение планет'));
+  const tbl = document.createElement('table'); tbl.className = 'nt-tbl';
+  ch.planets.forEach(p => {
+    const tr = document.createElement('tr');
+    [PL_G[p.id] + '︎ ' + p.name + (p.retro ? ' (R)' : ''), SIGN_G[p.sign_index] + ' ' + p.sign + ' ' + Math.floor(p.deg) + '°', p.house ? p.house + ' дом' : ''].forEach(t => {
+      const td = document.createElement('td'); td.textContent = t; tr.appendChild(td);
+    });
+    tbl.appendChild(tr);
+  });
+  body.appendChild(tbl);
+  if (ch.aspects.length) {
+    body.appendChild(node('div', 'h3', 'Главные аспекты'));
+    const at = document.createElement('table'); at.className = 'nt-tbl';
+    ch.aspects.slice(0, 10).forEach(a => {
+      const tr = document.createElement('tr');
+      [by[a.a].name + ' · ' + by[a.b].name, a.name, a.orb.toFixed(1) + '°'].forEach(t => { const td = document.createElement('td'); td.textContent = t; tr.appendChild(td); });
+      at.appendChild(tr);
+    });
+    body.appendChild(at);
+  }
+  body.appendChild(node('p', 'cd-note', 'Астрология — инструмент для размышления, а не прогноз и не гарантия. Расчёт приблизительный (точность в пределах нескольких угловых минут), дома по системе Плацидуса.'));
+  const back = node('button', 'sheet-close', '← К моим картам'); back.type = 'button'; back.style.marginBottom = '8px';
+  back.onclick = () => openNatal(); body.appendChild(back);
+  $('natalSheet').scrollTop = 0;
+}
+$('natalBtn').onclick = () => openNatal();
+$('ntClose').onclick = closePlans;
 function select(id, quiet) {
   const s = spreadList.find(x => x.id === id); if (!s) return;
   spread = id; spreadName = s.name; spreadCount = s.count;

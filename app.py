@@ -14,10 +14,12 @@ import urllib.error
 from contextlib import closing
 import urllib.parse
 import urllib.request
-from datetime import date
+from datetime import date, datetime
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
+from zoneinfo import ZoneInfo
 
+import astro
 import cards
 
 ROOT = Path(__file__).parent
@@ -45,6 +47,8 @@ PORT = int(os.environ.get("PORT", "8080"))
 CORS_ORIGIN = os.environ.get("CORS_ORIGIN", "").rstrip("/")  # например https://имя.github.io
 PROVIDER = os.environ.get("LLM_PROVIDER", "anthropic")
 SYSTEM_PROMPT = (ROOT / "prompt.md").read_text(encoding="utf-8")
+SYSTEM_NATAL = (ROOT / "prompt_natal.md").read_text(encoding="utf-8")
+NATAL = {"title": "Натальная карта", "description": "Расчёт и разбор натальной карты", "price": 399}
 HISTORY_LIMIT = 10
 COOLDOWN_SEC = 3
 FREE_REQUESTS = 3  # бесплатных запросов на пользователя, дальше нужен тариф
@@ -134,6 +138,11 @@ def init_db():
             CREATE TABLE IF NOT EXISTS shares (
                 token TEXT PRIMARY KEY, uid INTEGER, ts INTEGER, title TEXT, text TEXT);
             CREATE INDEX IF NOT EXISTS idx_shares_uid ON shares(uid, ts);
+            CREATE TABLE IF NOT EXISTS natal_orders (
+                id INTEGER PRIMARY KEY AUTOINCREMENT, uid INTEGER, ts INTEGER, name TEXT, birth_date TEXT, birth_time TEXT,
+                place TEXT, lat REAL, lon REAL, tz TEXT, status TEXT, paid_ts INTEGER, work_ts INTEGER, ready_ts INTEGER,
+                chart TEXT, result TEXT);
+            CREATE INDEX IF NOT EXISTS idx_natal_uid ON natal_orders(uid, ts);
         """)
         # колонки тарифов появились позже, добавляем их в уже существующую базу
         cols = {r["name"] for r in c.execute("PRAGMA table_info(users)")}
@@ -300,11 +309,12 @@ def platega_call(method, path, body=None, merchant=None, secret=None):
         raise PlategaError(e.code, e.read().decode(errors="replace")[:300]) from None
 
 
-def start_payment(uid, offer_id):
-    """Создаёт платёж в Platega и возвращает ссылку на страницу оплаты."""
+def start_payment(uid, offer_id, order=None):
+    """Создаёт платёж в Platega и возвращает ссылку на страницу оплаты. order — номер заказа натальной карты."""
     if not payments_ready():
         raise ValueError(no_payment_text())
-    offer, now = ALL_OFFERS[offer_id], int(time.time())
+    offer, now = (NATAL if offer_id == "natal" else ALL_OFFERS[offer_id]), int(time.time())
+    token = f"{offer_id}:{order}" if order else offer_id
     with closing(db()) as c:
         u = c.execute("SELECT username FROM users WHERE id=?", (uid,)).fetchone()
         pending = c.execute("SELECT COUNT(*) FROM payments WHERE uid=? AND provider='platega' AND status='pending' AND ts>=?",
@@ -317,7 +327,7 @@ def start_payment(uid, offer_id):
         "paymentDetails": {"amount": offer["price"], "currency": "RUB"},
         "description": f"{offer['title']}: «Ответы на ваши вопросы таро»",
         "return": f"{WEBAPP_URL}/paid?ok=1", "failedUrl": f"{WEBAPP_URL}/paid?ok=0",
-        "payload": f"{offer_id}:{uid}", "orderId": f"{uid}-{now}",
+        "payload": f"{token}:{uid}", "orderId": f"{uid}-{now}",
         "metadata": {
             # по правилам Platega для магазина в Telegram: постоянный ID покупателя + домен telegram.org
             "user_email": f"{uid}@telegram.org", "userId": str(uid), "userName": username,
@@ -328,7 +338,7 @@ def start_payment(uid, offer_id):
         raise RuntimeError(f"Platega: нет ссылки на оплату в ответе: {str(res)[:200]}")
     with closing(db()) as c, c:
         c.execute("INSERT INTO payments (uid, ts, amount, currency, status, provider, note) VALUES (?,?,?,?,?,?,?)",
-                  (uid, now, offer["price"], "RUB", "pending", "platega", f"{offer_id} {tx}"))
+                  (uid, now, offer["price"], "RUB", "pending", "platega", f"{token} {tx}"))
     return url
 
 
@@ -340,8 +350,9 @@ def confirm_platega(tx, amount=None):
         if row is None:
             print("platega: неизвестная транзакция", tx)
             return None
-        offer_id = row["note"].split(" ")[0]
-        if offer_id not in ALL_OFFERS:
+        token = row["note"].split(" ")[0]  # «pack5», либо «natal:<номер заказа>»
+        offer_id, _, order_id = token.partition(":")
+        if offer_id not in ALL_OFFERS and offer_id != "natal":
             return None
         if amount is not None and abs(float(amount) - float(row["amount"])) > 0.01:
             print("platega: сумма не совпала", tx, amount, row["amount"])
@@ -350,8 +361,16 @@ def confirm_platega(tx, amount=None):
         # статус меняется одним условным запросом, поэтому повторный колбэк ничего не начислит второй раз
         if c.execute("UPDATE payments SET status='paid', ts=? WHERE id=? AND status!='paid'", (now, row["id"])).rowcount != 1:
             return None
-        apply_offer(c, row["uid"], offer_id, now)
-    return row["uid"], offer_id
+        if offer_id == "natal":
+            if not order_id.isdigit() or c.execute(
+                    "UPDATE natal_orders SET status='paid', paid_ts=? WHERE id=? AND uid=? AND status='new'",
+                    (now, int(order_id), row["uid"])).rowcount != 1:
+                notify_admin(f"⚠ Оплата натальной карты ({token}, платёж {tx}) не привязалась к новому заказу: возможно, заказ "
+                             "уже оплачен ранее. Проверьте в Platega и при необходимости верните деньги.")
+                return None
+        else:
+            apply_offer(c, row["uid"], offer_id, now)
+    return row["uid"], token
 
 
 def platega_status(tx, status, amount=None):
@@ -373,6 +392,8 @@ def platega_status(tx, status, amount=None):
 
 def notify_paid(uid, offer_id):
     try:
+        if offer_id.startswith("natal:"):
+            return natal_paid(uid, int(offer_id.split(":")[1]))
         if offer_id in DONATIONS:
             tg("sendMessage", chat_id=uid, text="Спасибо за поддержку проекта! 💛")
         else:
@@ -454,7 +475,7 @@ def legal_html(name):
     page = (ROOT / "docs" / f"{name}.html").read_text(encoding="utf-8")
     operator = htmllib.escape(OPERATOR_NAME) if OPERATOR_NAME else "владелец сервиса (контакты указаны ниже)"
     return (page.replace("{{OPERATOR}}", operator).replace("{{CONTACTS}}", contacts_html())
-            .replace("{{TARIFFS}}", tariffs_html()).replace("{{FREE}}", str(FREE_REQUESTS))
+            .replace("{{TARIFFS}}", tariffs_html()).replace("{{FREE}}", str(FREE_REQUESTS)).replace("{{NATAL}}", str(NATAL["price"]))
             .replace("{{PAYNOTE}}", "" if payments_ready() or not SUPPORT_TG else
                      f" До подключения онлайн-оплаты тариф можно приобрести, написав @{htmllib.escape(SUPPORT_TG)} в Telegram."))
 
@@ -663,6 +684,8 @@ def admin_overview():
             "tickets_open": one("SELECT COUNT(*) FROM tickets WHERE status='open'"),
             "rated_good": one("SELECT COUNT(*) FROM readings WHERE rating=1"),
             "rated_bad": one("SELECT COUNT(*) FROM readings WHERE rating=-1"),
+            "natal_paid": one("SELECT COUNT(*) FROM natal_orders WHERE status IN ('paid','working','ready')"),
+            "natal_stuck": one("SELECT COUNT(*) FROM natal_orders WHERE status IN ('paid','working')"),
         }
         series = {}
         queries = (("users", "SELECT date(first_seen,'unixepoch','localtime') d, COUNT(*) n FROM users WHERE first_seen >= ? GROUP BY d"),
@@ -688,6 +711,258 @@ def admin_overview():
                ORDER BY CASE t.status WHEN 'open' THEN 0 WHEN 'answered' THEN 1 ELSE 2 END, t.updated DESC LIMIT 200""")]
     return {"stats": stats, "series": series, "users": users, "payments": payments, "requests": requests, "tickets": tickets,
             "platega": platega_state()}
+
+
+# ---------- Натальная карта ----------
+
+_geo_cache, _geo_hits = {}, {}
+_natal_running, _natal_lock = set(), threading.Lock()
+
+
+def geocode(uid, query):
+    """Поиск города (Open-Meteo): название, широта, долгота и часовой пояс. Не чаще 30 запросов в минуту на человека."""
+    q = re.sub(r"\s+", " ", str(query)).strip()[:60]
+    if len(q) < 2:
+        raise ValueError("Введите название города.")
+    now = time.time()
+    with state_lock:
+        hits = [t for t in _geo_hits.get(uid, []) if now - t < 60]
+        if len(hits) >= 30:
+            raise ValueError("Слишком много запросов, подождите минуту.")
+        _geo_hits[uid] = hits + [now]
+        if q.lower() in _geo_cache:
+            return _geo_cache[q.lower()]
+    url = "https://geocoding-api.open-meteo.com/v1/search?" + urllib.parse.urlencode(
+        {"name": q, "count": 6, "language": "ru", "format": "json"})
+    try:
+        with urllib.request.urlopen(urllib.request.Request(url, headers={"User-Agent": "tarot-bot/1.0"}), timeout=15) as r:
+            data = json.load(r)
+    except (urllib.error.URLError, OSError, ValueError):
+        raise RuntimeError("geocoder unavailable") from None
+    out = []
+    for x in data.get("results") or []:
+        if not x.get("timezone"):
+            continue
+        out.append({"label": ", ".join(p for p in (x.get("name"), x.get("admin1"), x.get("country")) if p),
+                    "lat": round(float(x["latitude"]), 4), "lon": round(float(x["longitude"]), 4), "tz": x["timezone"]})
+    with state_lock:
+        if len(_geo_cache) > 500:
+            _geo_cache.clear()
+        _geo_cache[q.lower()] = out
+    return out
+
+
+def parse_natal_input(body):
+    name = re.sub(r"\s+", " ", str(body.get("name") or "")).strip()[:40]
+    bd = parse_birth(body.get("birth_date"))
+    if not bd:
+        raise ValueError("Укажите дату рождения.")
+    btime, raw = None, str(body.get("birth_time") or "").strip()
+    if raw:
+        try:
+            btime = datetime.strptime(raw, "%H:%M").time()
+        except ValueError:
+            raise ValueError("Время рождения укажите в формате ЧЧ:ММ.") from None
+    place = re.sub(r"\s+", " ", str(body.get("place") or "")).strip()[:120]
+    try:
+        lat, lon = float(body.get("lat")), float(body.get("lon"))
+    except (TypeError, ValueError):
+        raise ValueError("Выберите город из списка.") from None
+    if not place or not (-90 <= lat <= 90 and -180 <= lon <= 180):
+        raise ValueError("Выберите город из списка.")
+    tz = str(body.get("tz") or "")
+    try:
+        astro.local_to_utc(bd, btime or datetime.strptime("12:00", "%H:%M").time(), tz)
+    except Exception:  # noqa: BLE001
+        raise ValueError("Не удалось определить часовой пояс этого города. Выберите другой город из списка.") from None
+    return {"name": name, "birth_date": bd.isoformat(), "birth_time": btime.strftime("%H:%M") if btime else "",
+            "place": place, "lat": lat, "lon": lon, "tz": tz}
+
+
+def create_natal_order(uid, body):
+    p = parse_natal_input(body)
+    now = int(time.time())
+    with closing(db()) as c, c:
+        if c.execute("SELECT COUNT(*) FROM natal_orders WHERE uid=? AND status='new' AND ts>=?", (uid, now - 86400)).fetchone()[0] >= 10:
+            raise ValueError("Слишком много неоплаченных заказов. Оплатите один из созданных или подождите до завтра.")
+        cur = c.execute("INSERT INTO natal_orders (uid, ts, name, birth_date, birth_time, place, lat, lon, tz, status) "
+                        "VALUES (?,?,?,?,?,?,?,?,?, 'new')",
+                        (uid, now, p["name"], p["birth_date"], p["birth_time"], p["place"], p["lat"], p["lon"], p["tz"]))
+    return cur.lastrowid
+
+
+def natal_row(uid, oid):
+    with closing(db()) as c:
+        return c.execute("SELECT * FROM natal_orders WHERE id=? AND uid=?", (oid, uid)).fetchone()
+
+
+def natal_public(row, full=False):
+    st = {"new": "new", "paid": "working", "working": "working", "ready": "ready"}.get(row["status"], "working")
+    d = {"id": row["id"], "ts": row["ts"], "status": st, "name": row["name"], "place": row["place"],
+         "birth_date": row["birth_date"], "birth_time": row["birth_time"]}
+    if full and row["status"] == "ready":
+        d["chart"], d["result"] = json.loads(row["chart"]), json.loads(row["result"])
+    return d
+
+
+def natal_list(uid):
+    with closing(db()) as c:
+        rows = c.execute("SELECT * FROM natal_orders WHERE uid=? ORDER BY id DESC LIMIT 20", (uid,)).fetchall()
+    return [natal_public(r) for r in rows]
+
+
+def natal_get(uid, oid):
+    check_pending(uid)  # если колбэк оплаты не дошёл, подхватываем оплату здесь
+    row = natal_row(uid, oid)
+    if not row:
+        raise LookupError("Заказ не найден.")
+    if row["status"] in ("paid", "working"):
+        natal_kick(oid)
+        row = natal_row(uid, oid)
+    return natal_public(row, full=True)
+
+
+def natal_paid(uid, oid):
+    """Оплата получена: сообщаем человеку и запускаем расчёт."""
+    try:
+        tg("sendMessage", chat_id=uid, text="Оплата получена, спасибо! 🪐 Считаю вашу натальную карту, это займёт около минуты. "
+           "Я пришлю её сюда и она появится в разделе «Натальная карта» мини-аппа.",
+           reply_markup={"inline_keyboard": [[{"text": "🪐 Открыть раздел", "web_app": {"url": f"{WEBAPP_URL}/?screen=natal&order={oid}"}}]]})
+    except Exception as e:  # noqa: BLE001
+        print("natal paid notify error:", e)
+    natal_kick(oid)
+
+
+def natal_kick(oid):
+    with _natal_lock:
+        if oid in _natal_running:
+            return
+        _natal_running.add(oid)
+
+    def run():
+        try:
+            natal_generate(oid)
+        except Exception as e:  # noqa: BLE001
+            print("natal generate error:", e)
+        finally:
+            with _natal_lock:
+                _natal_running.discard(oid)
+    threading.Thread(target=run, daemon=True).start()
+
+
+def natal_payload(chart):
+    """Компактное описание карты для нейросети. Имя, ID и город человека ей не передаются."""
+    names = {pl["id"]: pl["name"] for pl in chart["planets"]}
+    planets = []
+    for pl in chart["planets"]:
+        item = {"name": pl["name"], "sign": pl["sign"], "deg": pl["deg"]}
+        if pl["retro"]:
+            item["retro"] = True
+        if pl["house"]:
+            item["house"] = pl["house"]
+        planets.append(item)
+    p = {"time_known": chart["time_known"], "planets": planets,
+         "aspects": [{"a": names[x["a"]], "b": names[x["b"]], "name": x["name"], "orb": x["orb"]} for x in chart["aspects"][:14]],
+         "elements": chart["elements"], "modalities": chart["modalities"]}
+    if chart["time_known"]:
+        p["asc"], p["mc"] = ({k: chart[n][k] for k in ("sign", "deg")} for n in ("asc", "mc"))
+        p["houses"] = [{"n": h["n"], "sign": h["sign"], "deg": h["deg"]} for h in chart["houses"]]
+    return p
+
+
+def natal_interpret(chart):
+    raw = call_llm(json.dumps(natal_payload(chart), ensure_ascii=False), system=SYSTEM_NATAL, max_tokens=7000).strip()
+    start, end = raw.find("{"), raw.rfind("}")
+    summary, sections = "", []
+    try:
+        obj = json.loads(raw[start:end + 1])
+        summary = str(obj.get("summary") or "").strip()
+        for s in obj.get("sections") or []:
+            if isinstance(s, dict) and str(s.get("text") or "").strip():
+                sections.append({"title": str(s.get("title") or "").strip()[:80], "text": str(s["text"]).strip()})
+    except (ValueError, AttributeError, TypeError):
+        pass
+    if not sections:  # нейросеть ответила не JSON-ом: отдаём её текст как есть
+        if len(raw) < 200:
+            raise RuntimeError("Нейросеть вернула слишком короткий ответ для натальной карты")
+        sections = [{"title": "Разбор карты", "text": raw[:8000]}]
+    return {"summary": summary, "sections": sections[:12]}
+
+
+def natal_chat_text(row, chart, result):
+    lines = ["🪐 Натальная карта" + (f" — {row['name']}" if row["name"] else ""),
+             f"{time.strftime('%d.%m.%Y', time.strptime(row['birth_date'], '%Y-%m-%d'))}"
+             f"{', ' + row['birth_time'] if row['birth_time'] else ''}, {row['place']}", ""]
+    if chart["time_known"]:
+        lines.append(f"Асцендент: {chart['asc']['sign']} {int(chart['asc']['deg'])}°   МС: {chart['mc']['sign']} {int(chart['mc']['deg'])}°")
+    for p in chart["planets"]:
+        lines.append(f"{p['name']}: {p['sign']} {int(p['deg'])}°{' (R)' if p['retro'] else ''}" + (f", {p['house']} дом" if p["house"] else ""))
+    lines.append("")
+    if result["summary"]:
+        lines += [result["summary"].replace("**", ""), ""]
+    for s in result["sections"]:
+        lines += [s["title"].upper() if s["title"] else "", s["text"].replace("**", ""), ""]
+    return "\n".join(lines).strip()
+
+
+def natal_generate(oid):
+    now = int(time.time())
+    with closing(db()) as c, c:
+        got = c.execute("UPDATE natal_orders SET status='working', work_ts=? WHERE id=? AND "
+                        "((status='paid' AND COALESCE(work_ts,0) < ?) OR (status='working' AND work_ts < ?))",
+                        (now, oid, now - 120, now - 600)).rowcount
+    if got != 1:
+        return
+    with closing(db()) as c:
+        row = c.execute("SELECT * FROM natal_orders WHERE id=?", (oid,)).fetchone()
+    last_error = None
+    for attempt in range(3):
+        try:
+            chart = astro.build_chart(date.fromisoformat(row["birth_date"]),
+                                      datetime.strptime(row["birth_time"], "%H:%M").time() if row["birth_time"] else None,
+                                      row["lat"], row["lon"], row["tz"])
+            result = natal_interpret(chart)
+            with closing(db()) as c, c:
+                c.execute("UPDATE natal_orders SET status='ready', ready_ts=?, chart=?, result=? WHERE id=?",
+                          (int(time.time()), json.dumps(chart, ensure_ascii=False), json.dumps(result, ensure_ascii=False), oid))
+            return natal_deliver(row, chart, result)
+        except Exception as e:  # noqa: BLE001
+            last_error = e
+            print(f"natal #{oid} attempt {attempt + 1} failed:", e)
+            if attempt < 2:
+                time.sleep(40 * (attempt + 1))
+    with closing(db()) as c, c:
+        c.execute("UPDATE natal_orders SET status='paid', work_ts=? WHERE id=?", (int(time.time()), oid))  # позже попробуем снова
+    notify_admin(f"⚠ Натальная карта №{oid} оплачена, но не сформирована: {str(last_error)[:200]}.\n"
+                 "Бот попробует снова, когда человек откроет раздел или после перезапуска.")
+    try:
+        tg("sendMessage", chat_id=row["uid"], text="Натальная карта считается дольше обычного. Ничего повторно оплачивать не нужно: "
+           "она появится в разделе «Натальная карта» и придёт в этот чат, как только будет готова.")
+    except Exception as e:  # noqa: BLE001
+        print("natal delay notify error:", e)
+
+
+def natal_deliver(row, chart, result):
+    try:
+        tg("sendMessage", chat_id=row["uid"], text="✨ Ваша натальная карта готова!",
+           reply_markup={"inline_keyboard": [[{"text": "🪐 Открыть карту", "web_app": {"url": f"{WEBAPP_URL}/?screen=natal&order={row['id']}"}}]]})
+        text = natal_chat_text(row, chart, result)
+        while text:  # лимит Telegram — 4096 знаков на сообщение
+            cut = text[:3800]
+            if len(text) > 3800 and "\n" in cut:
+                cut = cut[:cut.rfind("\n")]
+            tg("sendMessage", chat_id=row["uid"], text=cut)
+            text = text[len(cut):].lstrip("\n")
+    except Exception as e:  # noqa: BLE001
+        print("natal deliver error:", e)
+
+
+def natal_resume():
+    """После перезапуска продолжаем оплаченные, но неготовые карты."""
+    with closing(db()) as c:
+        ids = [r["id"] for r in c.execute("SELECT id FROM natal_orders WHERE status IN ('paid','working')")]
+    for oid in ids:
+        natal_kick(oid)
 
 
 def admin_user(uid):
@@ -741,6 +1016,7 @@ def admin_grant(chat_id, args):
 HELP_TEXT = """Все команды:
 
 🔮 /app — открыть таро
+🪐 /natal — натальная карта (399 ₽)
 💳 /tariffs — тарифы и цены
 🛟 /support — поддержка и контакты
 ✉ /ticket — создать обращение, например: /ticket не пришёл ответ
@@ -760,8 +1036,20 @@ def legal_buttons():
 
 def menu_markup():
     rows = [[{"text": "🔮 Открыть таро", "web_app": {"url": WEBAPP_URL}}]] if WEBAPP_URL else []
+    rows.append([{"text": f"🪐 Натальная карта — {NATAL['price']} ₽", "callback_data": "natal"}])
     rows.append([{"text": "💳 Тарифы и цены", "callback_data": "tariffs"}, {"text": "🛟 Поддержка", "callback_data": "support"}])
     return {"inline_keyboard": rows + legal_buttons()}
+
+
+def send_natal(chat_id):
+    text = (f"🪐 Натальная карта — {NATAL['price']} ₽\n\n"
+            "Расчёт положения планет и домов на момент вашего рождения и подробный разбор: характер, эмоции, любовь, работа, "
+            "сильные стороны и зоны роста.\n\n"
+            "Что нужно: дата, время и город рождения. Сначала вы всё вводите в приложении, потом оплачиваете, и карта приходит "
+            "сюда и сохраняется в разделе «Натальная карта». Оплата разовая, без подписки.\n\n"
+            "Если точное время неизвестно, карта будет без домов и Асцендента.")
+    kwargs = {"reply_markup": {"inline_keyboard": [[{"text": "🪐 Заказать карту", "web_app": {"url": f"{WEBAPP_URL}/?screen=natal"}}]]}} if WEBAPP_URL else {}
+    tg("sendMessage", chat_id=chat_id, text=text, **kwargs)
 
 
 def send_menu(chat_id, intro=""):
@@ -863,7 +1151,9 @@ def quota_info(uid):
 def handle_callback(cq):
     tg("answerCallbackQuery", callback_query_id=cq["id"])
     chat_id, uid, data = cq["message"]["chat"]["id"], cq["from"]["id"], cq.get("data", "")
-    if data == "tariffs":
+    if data == "natal":
+        send_natal(chat_id)
+    elif data == "tariffs":
         send_tariffs(chat_id, uid)
     elif data == "support":
         send_support(chat_id)
@@ -919,6 +1209,8 @@ def handle_update(upd):
         return send_menu(chat_id)
     if cmd == "/app":
         return send_app(chat_id)
+    if cmd in ("/natal", "/natalka"):
+        return send_natal(chat_id)
     if cmd in ("/tariffs", "/buy"):
         return send_tariffs(chat_id, uid)
     if cmd == "/support":
@@ -1032,10 +1324,10 @@ def llm_error_hint(e):
     return "Не удалось связаться с нейросетью или она вернула неожиданный ответ."
 
 
-def call_llm(user_json):
+def call_llm(user_json, system=None, max_tokens=4000):
     """Вызов нейросети. При сбое сразу пишем администратору (не чаще раза в 10 минут), когда снова работает, сообщаем об этом."""
     try:
-        out = _call_llm(user_json)
+        out = _call_llm(user_json, system or SYSTEM_PROMPT, max_tokens)
     except Exception as e:  # noqa: BLE001
         now = time.time()
         with state_lock:
@@ -1053,14 +1345,14 @@ def call_llm(user_json):
     return out
 
 
-def _call_llm(user_json):
+def _call_llm(user_json, system, max_tokens):
     if PROVIDER == "openai":
         base = os.environ.get("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
         data = http_json(
             f"{base}/chat/completions",
             {"Content-Type": "application/json", "Authorization": f"Bearer {os.environ.get('OPENAI_API_KEY', '')}"},
-            {"model": os.environ.get("OPENAI_MODEL", "gpt-4o"), "max_tokens": 4000,
-             "messages": [{"role": "system", "content": SYSTEM_PROMPT},
+            {"model": os.environ.get("OPENAI_MODEL", "gpt-4o"), "max_tokens": max_tokens,
+             "messages": [{"role": "system", "content": system},
                           {"role": "user", "content": user_json}]},
         )
         return data["choices"][0]["message"]["content"]
@@ -1068,8 +1360,8 @@ def _call_llm(user_json):
         "https://api.anthropic.com/v1/messages",
         {"Content-Type": "application/json", "anthropic-version": "2023-06-01",
          "x-api-key": os.environ.get("ANTHROPIC_API_KEY", "")},
-        {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"), "max_tokens": 4000,
-         "system": SYSTEM_PROMPT, "messages": [{"role": "user", "content": user_json}]},
+        {"model": os.environ.get("ANTHROPIC_MODEL", "claude-sonnet-5-5"), "max_tokens": max_tokens,
+         "system": system, "messages": [{"role": "user", "content": user_json}]},
     )
     return "".join(b.get("text", "") for b in data["content"])
 
@@ -1338,6 +1630,43 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
             return self.reply_json(500, {"error": "error"})  # Platega повторит запрос позже
         self.reply_json(200, {"ok": True})
 
+    def natal_api(self, uid, path, body):
+        def pay(oid):
+            try:
+                return self.reply_json(200, {"id": oid, "url": start_payment(uid, "natal", order=oid)})
+            except ValueError as e:  # оплата не подключена или слишком много счетов
+                return self.reply_json(400, {"error": str(e), "contact": contact_url(), "contact_name": SUPPORT_TG, "id": oid})
+            except Exception as e:  # noqa: BLE001
+                print("natal payment error:", e)
+                return self.reply_json(502, {"error": "Не удалось создать платёж. Попробуйте позже" +
+                                             (f" или напишите @{SUPPORT_TG}." if SUPPORT_TG else "."), "id": oid})
+        try:
+            if path == "/api/natal/info":
+                with state_lock:
+                    birth = profiles.get(uid, "")
+                return self.reply_json(200, {"price": NATAL["price"], "birth_date": birth, "orders": natal_list(uid),
+                                             "ready": payments_ready()})
+            if path == "/api/natal/place":
+                return self.reply_json(200, {"places": geocode(uid, body.get("q", ""))})
+            if path == "/api/natal/order":
+                if not payments_ready():  # без онлайн-оплаты заказ не создаём
+                    return self.reply_json(400, {"error": no_payment_text(), "contact": contact_url(), "contact_name": SUPPORT_TG})
+                return pay(create_natal_order(uid, body))
+            if path == "/api/natal/pay":
+                row = natal_row(uid, int(body.get("id", 0)))
+                if not row or row["status"] != "new":
+                    return self.reply_json(404, {"error": "Заказ не найден или уже оплачен."})
+                return pay(row["id"])
+            if path == "/api/natal/get":
+                return self.reply_json(200, natal_get(uid, int(body.get("id", 0))))
+        except ValueError as e:
+            return self.reply_json(400, {"error": str(e)})
+        except LookupError as e:
+            return self.reply_json(404, {"error": str(e)})
+        except RuntimeError:
+            return self.reply_json(502, {"error": "Поиск городов временно недоступен. Попробуйте через минуту."})
+        self.send_error(404)
+
     def do_POST(self):
         if urllib.parse.urlparse(self.path).path == "/api/platega/callback":
             return self.platega_callback()
@@ -1397,6 +1726,8 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
                 return self.reply_json(502, {"error": "Не удалось создать платёж. Попробуйте позже" +
                                              (f" или напишите @{SUPPORT_TG}." if SUPPORT_TG else ".")})
             return self.reply_json(200, {"url": url})
+        if path.startswith("/api/natal/"):
+            return self.natal_api(uid, path, body)
         if path == "/api/share":
             try:
                 token = save_share(uid, body.get("image", ""), body.get("title", ""), body.get("text", ""))
@@ -1463,7 +1794,7 @@ a{{display:inline-block;margin-top:14px;padding:14px 26px;border-radius:16px;bac
         self.reply_json(200, {**res, "card_readings": res["cards"], "cards": drawn, "log_id": log_id})
 
 
-COMMANDS = [("start", "Главное меню"), ("app", "Открыть таро"), ("tariffs", "Тарифы и цены"), ("support", "Поддержка"),
+COMMANDS = [("start", "Главное меню"), ("app", "Открыть таро"), ("natal", "Натальная карта"), ("tariffs", "Тарифы и цены"), ("support", "Поддержка"),
             ("ticket", "Создать обращение"), ("privacy", "Политика конфиденциальности"),
             ("terms", "Пользовательское соглашение"), ("help", "Все команды")]
 
@@ -1488,6 +1819,7 @@ def main():
     threading.Thread(target=bot_username, daemon=True).start()  # имя бота нужно для ссылок «поделиться»
     init_db()
     load_platega()
+    natal_resume()
     threading.Thread(target=poll_loop, daemon=True).start()
     print(f"Мини-апп на http://localhost:{PORT}  (WEBAPP_URL={WEBAPP_URL or 'не задан'})")
     ThreadingHTTPServer(("0.0.0.0", PORT), Handler).serve_forever()
